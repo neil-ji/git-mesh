@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gitmesh — 多 Agent 并行编码 git 冲突解决方案</title>
+<meta name="description" content="多 Agent 并行编码 git 冲突解决方案 — 在单仓库内为多个 AI Agent 创建隔离工作区，自动合并代码，智能路由冲突。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+/* === ICONS === */
+i.lucide{display:inline-block;vertical-align:middle;flex-shrink:0}
+
+/* === RESET === */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth;-webkit-font-smoothing:antialiased}
+body{font-family:Inter,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#0f172a;background:#f8fafc;line-height:1.6;overflow-x:hidden}
+img,svg{display:block;max-width:100%}
+a{color:inherit;text-decoration:none}
+
+/* === TOKENS === */
+:root{
+  --navy:#070b16;
+  --navy-light:#0f1a2e;
+  --cyan:#06b6d4;
+  --cyan-bright:#22d3ee;
+  --cyan-dim:rgba(6,182,212,0.1);
+  --indigo:#6366f1;
+  --indigo-dim:rgba(99,102,241,0.1);
+  --surface:#f8fafc;
+  --surface-alt:#f1f5f9;
+  --white:#ffffff;
+  --ink:#0f172a;
+  --ink-light:#475569;
+  --ink-muted:#94a3b8;
+  --border:rgba(15,23,42,0.08);
+  --border-dark:rgba(255,255,255,0.07);
+  --emerald:#10b981;
+  --emerald-dim:rgba(16,185,129,0.08);
+  --amber:#f59e0b;
+  --amber-dim:rgba(245,158,11,0.08);
+  --rose:#f43f5e;
+  --radius:12px;
+  --radius-sm:8px;
+  --max-width:1160px;
+}
+
+/* === UTILITY === */
+.container{max-width:var(--max-width);margin:0 auto;padding:0 24px}
+.section{padding:100px 0}
+.section-label{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;letter-spacing:0.08em;text-transform:uppercase;color:var(--cyan);margin-bottom:16px}
+.section-title{font-family:'Space Grotesk',sans-serif;font-size:clamp(28px,4vw,44px);font-weight:700;letter-spacing:-0.02em;line-height:1.15;margin-bottom:20px;color:var(--ink)}
+.section-desc{font-size:18px;color:var(--ink-light);max-width:600px;line-height:1.6}
+
+/* === NAV === */
+.nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:16px 0;transition:all 0.3s}
+.nav.scrolled{background:rgba(7,11,22,0.88);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--border-dark)}
+.nav .container{display:flex;align-items:center;justify-content:space-between}
+.nav-logo{display:flex;align-items:center;gap:10px;font-family:'Space Grotesk',sans-serif;font-size:20px;font-weight:700;color:#fff;letter-spacing:-0.02em}
+.nav-logo svg{width:30px;height:30px}
+.nav-links{display:flex;align-items:center;gap:28px}
+.nav-link{font-size:14px;font-weight:500;color:rgba(255,255,255,0.6);transition:color 0.2s}
+.nav-link:hover{color:#fff}
+.nav-gh{display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.1);border-radius:var(--radius-sm);font-size:14px;font-weight:600;color:#fff;transition:all 0.2s}
+.nav-gh:hover{background:rgba(255,255,255,0.12)}
+.nav-star{display:inline-flex;align-items:center;gap:5px;padding:8px 14px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.2);border-radius:var(--radius-sm);font-size:13px;font-weight:600;color:var(--amber);transition:all 0.2s}
+.nav-star:hover{background:rgba(245,158,11,0.18);border-color:rgba(245,158,11,0.3)}
+.nav-star svg{width:14px;height:14px}
+
+/* === HERO === */
+.hero{background:var(--navy);position:relative;min-height:100vh;display:flex;align-items:center;padding:140px 0 80px;overflow:hidden}
+.hero::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(6,182,212,0.03) 1px,transparent 1px),linear-gradient(90deg,rgba(6,182,212,0.03) 1px,transparent 1px);background-size:48px 48px;pointer-events:none}
+.hero::after{content:'';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:900px;height:600px;background:radial-gradient(ellipse at center,rgba(6,182,212,0.05) 0%,transparent 70%);pointer-events:none}
+.hero-content{position:relative;z-index:2;text-align:center;max-width:780px;margin:0 auto}
+.hero-badge{display:inline-flex;align-items:center;gap:8px;padding:5px 14px;background:var(--cyan-dim);border:1px solid rgba(6,182,212,0.18);border-radius:100px;font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:500;color:var(--cyan);margin-bottom:32px;letter-spacing:0.02em}
+.hero-badge svg{width:14px;height:14px}
+.hero h1{font-family:'Space Grotesk',sans-serif;font-size:clamp(40px,6vw,72px);font-weight:700;letter-spacing:-0.03em;line-height:1.08;color:#fff;margin-bottom:24px}
+.hero h1 em{font-style:normal;background:linear-gradient(135deg,var(--cyan),var(--indigo));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-subtitle{font-size:clamp(16px,2vw,20px);color:rgba(255,255,255,0.5);max-width:500px;margin:0 auto 40px;line-height:1.6}
+.hero-actions{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap;margin-bottom:64px}
+.btn-primary{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;background:var(--cyan);color:var(--navy);border-radius:var(--radius-sm);font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:700;letter-spacing:0.01em;transition:all 0.2s;border:none;cursor:pointer}
+.btn-primary:hover{background:var(--cyan-bright);transform:translateY(-1px);box-shadow:0 8px 28px rgba(6,182,212,0.28)}
+.btn-secondary{display:inline-flex;align-items:center;gap:8px;padding:14px 28px;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.1);border-radius:var(--radius-sm);font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:#fff;transition:all 0.2s;cursor:pointer}
+.btn-secondary:hover{background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.18)}
+.btn-secondary svg{width:18px;height:18px;opacity:0.7}
+.btn-star{display:inline-flex;align-items:center;gap:6px;padding:14px 28px;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.22);border-radius:var(--radius-sm);font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;color:var(--amber);transition:all 0.2s;cursor:pointer}
+.btn-star:hover{background:rgba(245,158,11,0.18);border-color:rgba(245,158,11,0.35);transform:translateY(-1px)}
+.btn-star svg{width:18px;height:18px}
+.star-count{font-variant-numeric:tabular-nums}
+
+/* Hero git graph animation */
+.hero-graph{position:relative;z-index:2;max-width:660px;margin:0 auto}
+.hero-graph svg{width:100%;height:auto}
+
+/* Phased animation */
+@keyframes draw-trunk{to{stroke-dashoffset:0}}
+@keyframes draw-branch{to{stroke-dashoffset:0}}
+@keyframes appear{to{opacity:1}}
+@keyframes merge-glow{0%,100%{opacity:0.5}50%{opacity:1}}
+@keyframes label-in{to{opacity:1;transform:translateY(0)}}
+
+/* Animation elements */
+.anim-trunk{stroke-dasharray:1000;stroke-dashoffset:1000;animation:draw-trunk 0.8s ease-out 0.2s forwards}
+.anim-branch-1{stroke-dasharray:600;stroke-dashoffset:600;animation:draw-branch 0.9s ease-out 0.6s forwards}
+.anim-branch-2{stroke-dasharray:600;stroke-dashoffset:600;animation:draw-branch 0.9s ease-out 0.9s forwards}
+.anim-branch-3{stroke-dasharray:600;stroke-dashoffset:600;animation:draw-branch 0.9s ease-out 1.2s forwards}
+.anim-node{opacity:0;animation:appear 0.6s ease-out forwards}
+.anim-node-1{animation-delay:1.5s}
+.anim-node-2{animation-delay:1.8s}
+.anim-node-3{animation-delay:2.1s}
+.anim-node-4{animation-delay:2.4s}
+.anim-node-5{animation-delay:2.7s}
+.anim-node-6{animation-delay:3.0s}
+.anim-node-7{animation-delay:3.3s}
+.anim-node-8{animation-delay:3.6s}
+.anim-merge{animation:merge-glow 2s ease-in-out infinite}
+.anim-merge-1{animation-delay:0s}
+.anim-merge-2{animation-delay:0.7s}
+.anim-merge-3{animation-delay:1.4s}
+.anim-label{opacity:0;transform:translateY(4px);animation:label-in 0.5s ease-out forwards}
+.anim-label-1{animation-delay:1.5s}
+.anim-label-2{animation-delay:1.8s}
+.anim-label-3{animation-delay:2.1s}
+.anim-label-4{animation-delay:3s}
+.anim-label-5{animation-delay:3.3s}
+.anim-label-6{animation-delay:3.6s}
+
+/* === SECTION: PAIN POINTS === */
+.pain-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:48px}
+.pain-card{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);padding:32px;transition:all 0.3s;position:relative;overflow:hidden}
+.pain-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;opacity:0;transition:opacity 0.3s}
+.pain-card:hover{border-color:#dde4ed;box-shadow:0 4px 24px rgba(0,0,0,0.04);transform:translateY(-2px)}
+.pain-card:nth-child(1):hover::before{background:var(--amber);opacity:1}
+.pain-card:nth-child(2):hover::before{background:var(--indigo);opacity:1}
+.pain-card:nth-child(3):hover::before{background:var(--rose);opacity:1}
+.pain-icon{width:40px;height:40px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.pain-icon.warn{background:var(--amber-dim);color:var(--amber)}
+.pain-icon.cycle{background:var(--indigo-dim);color:var(--indigo)}
+.pain-icon.error{background:rgba(244,63,94,0.08);color:var(--rose)}
+.pain-card h3{font-family:'Space Grotesk',sans-serif;font-size:17px;font-weight:600;margin-bottom:8px;color:var(--ink);letter-spacing:-0.01em}
+.pain-card p{font-size:14px;color:var(--ink-light);line-height:1.6}
+
+/* === FLOW ANIMATION SECTION === */
+.flow-section{background:var(--navy);position:relative;overflow:hidden}
+.flow-section::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(6,182,212,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(6,182,212,0.025) 1px,transparent 1px);background-size:48px 48px;pointer-events:none}
+.flow-section .section-label{color:var(--cyan)}
+.flow-section .section-title{color:#fff}
+.flow-section .section-desc{color:rgba(255,255,255,0.45)}
+
+/* Scene container */
+.flow-scene{position:relative;z-index:2;margin-top:40px;display:flex;gap:72px;align-items:flex-start;justify-content:center;max-width:1020px;margin-left:auto;margin-right:auto}
+.flow-scene svg.flow-lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:3}
+
+/* Orchestrator panel */
+.orc-panel{flex:0 0 380px;background:#0b1222;border:1px solid rgba(255,255,255,0.08);border-radius:10px;overflow:hidden;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;z-index:2;display:flex;flex-direction:column;align-self:stretch}
+.orc-header{display:flex;align-items:center;gap:8px;padding:10px 14px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.05)}
+.orc-header-dot{width:8px;height:8px;border-radius:50%}
+.orc-header-dot.r{background:#f43f5e}.orc-header-dot.y{background:#f59e0b}.orc-header-dot.g{background:#10b981}
+.orc-header-title{font-size:11px;color:rgba(255,255,255,0.3);margin-left:6px}
+.orc-body{padding:14px;flex:1;display:flex;flex-direction:column;gap:0;position:relative}
+.orc-repo{font-size:11px;color:rgba(255,255,255,0.25);margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.orc-repo svg{width:12px;height:12px;opacity:0.4}
+.orc-head{display:flex;align-items:center;gap:8px;margin-bottom:12px}
+.orc-head-label{font-size:10px;color:rgba(255,255,255,0.2);text-transform:uppercase;letter-spacing:0.06em}
+.orc-head-hash{font-size:15px;font-weight:600;color:rgba(255,255,255,0.7);letter-spacing:0.02em}
+.orc-log{flex:1;display:flex;flex-direction:column;gap:3px;overflow-y:auto;overflow-x:hidden}
+.orc-log-line{font-size:10.5px;line-height:1.5;padding:4px 8px;border-radius:4px;transition:all 0.3s}
+.orc-log-line .ts{color:rgba(255,255,255,0.15);margin-right:6px}
+.orc-log-line .msg{color:rgba(255,255,255,0.45)}
+.orc-log-line.warn{background:rgba(245,158,11,0.06)}.orc-log-line.warn .msg{color:#f59e0b}
+.orc-log-line.err{background:rgba(244,63,94,0.06)}.orc-log-line.err .msg{color:#f43f5e}
+.orc-log-line.ok{background:rgba(16,185,129,0.05)}.orc-log-line.ok .msg{color:#10b981}
+.orc-log-line.info .msg{color:rgba(255,255,255,0.6)}
+.orc-conflict-popup{position:absolute;right:-210px;top:50%;transform:translateY(-50%);width:190px;background:#0f1219;border:1px solid rgba(245,158,11,0.25);border-radius:8px;padding:12px;font-family:Inter,sans-serif;z-index:5;opacity:0;pointer-events:none}
+.orc-conflict-popup .title{font-size:11px;font-weight:600;color:#f59e0b;margin-bottom:6px}
+.orc-conflict-popup .file{font-size:10px;color:rgba(255,255,255,0.5);margin-bottom:4px}
+.orc-conflict-popup .arrow{font-size:10px;color:rgba(245,158,11,0.6)}
+.orc-merge-badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;background:rgba(16,185,129,0.08);border:1px solid rgba(16,185,129,0.2);border-radius:6px;font-size:10px;color:#10b981;margin-top:8px;opacity:0}
+.orc-done-check{position:absolute;bottom:14px;right:18px;opacity:0;z-index:4}
+
+/* Agent panels */
+.agent-col{flex:1;display:flex;flex-direction:column;gap:12px;min-width:0;z-index:2}
+.agent-panel{background:#0c0f14;border:1px solid rgba(255,255,255,0.06);border-radius:8px;overflow:hidden;font-family:'SF Mono','Fira Code','Cascadia Code',monospace;transition:all 0.5s}
+.agent-panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:rgba(255,255,255,0.015);border-bottom:1px solid rgba(255,255,255,0.04)}
+.agent-panel-name{font-size:10px;font-weight:600;color:rgba(255,255,255,0.3);display:flex;align-items:center;gap:6px}
+.agent-panel-name .dot{width:6px;height:6px;border-radius:50%}
+.agent-panel-name .dot.a{background:#06b6d4}.agent-panel-name .dot.b{background:#6366f1}.agent-panel-name .dot.c{background:#a78bfa}
+.agent-panel-wt{font-size:9px;color:rgba(255,255,255,0.15)}
+.agent-panel-body{padding:10px 12px;height:134px;display:flex;flex-direction:column;gap:2px;font-size:10.5px;line-height:1.55;overflow:hidden}
+.agent-line{color:rgba(255,255,255,0.25);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.agent-line.prompt{color:#10b981}
+.agent-line.cmd{color:#f59e0b}
+.agent-line.file{color:#22d3ee}
+.agent-line.dim{color:rgba(255,255,255,0.12)}
+.agent-line.conflict-marker{color:#f43f5e}
+.agent-line.done{color:#10b981}
+.agent-panel-status{font-size:9px;padding:6px 12px;border-top:1px solid rgba(255,255,255,0.03);color:rgba(255,255,255,0.15);display:flex;align-items:center;gap:6px;min-height:26px}
+.agent-panel-status.ok{color:#10b981}
+.agent-panel-status.warn{color:#f59e0b}
+.agent-panel-status .status-icon{width:6px;height:6px;border-radius:50%;display:inline-block}
+.agent-panel-status .status-icon.ready{background:#06b6d4}
+.agent-panel-status .status-icon.working{background:#f59e0b;animation:pulse-dot 1s ease-in-out infinite}
+.agent-panel-status .status-icon.done{background:#10b981}
+.agent-panel-status .status-icon.conflict{background:#f43f5e}
+
+@keyframes pulse-dot{0%,100%{opacity:0.3}50%{opacity:1}}
+
+/* Narration */
+.flow-narration{text-align:center;margin-top:20px;min-height:28px;position:relative;z-index:2}
+.flow-narration span{font-family:'Space Grotesk',sans-serif;font-size:15px;color:rgba(255,255,255,0.55);letter-spacing:0.01em;transition:all 0.3s}
+
+/* Responsive */
+@media(max-width:860px){
+  .flow-scene{flex-direction:column;align-items:stretch}
+  .orc-panel{flex:auto}
+  .agent-col{flex-direction:row}
+  .agent-panel{flex:1;min-width:0}
+  .agent-panel-body{min-height:70px;font-size:9px}
+  .orc-conflict-popup{right:auto;left:50%;top:auto;bottom:-60px;transform:translateX(-50%)}
+}
+
+@media(max-width:640px){
+  .agent-col{flex-direction:column}
+}
+
+/* === SECTION: FEATURES === */
+.features-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-top:48px;background:var(--border);border-radius:var(--radius);overflow:hidden;border:1px solid var(--border)}
+.feature-card{background:var(--white);padding:32px;transition:background 0.2s}
+.feature-card:hover{background:#fafbfc}
+.fc-icon{width:32px;height:32px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;margin-bottom:16px}
+.fc-icon.c1{background:var(--cyan-dim);color:var(--cyan)}
+.fc-icon.c2{background:var(--indigo-dim);color:var(--indigo)}
+.fc-icon.c3{background:var(--emerald-dim);color:var(--emerald)}
+.fc-icon.c4{background:var(--amber-dim);color:var(--amber)}
+.fc-icon.c5{background:rgba(167,139,250,0.1);color:#a78bfa}
+.fc-icon.c6{background:rgba(244,63,94,0.08);color:var(--rose)}
+.feature-card h4{font-family:'Space Grotesk',sans-serif;font-size:15px;font-weight:600;margin-bottom:6px;letter-spacing:-0.01em}
+.feature-card p{font-size:13px;color:var(--ink-light);line-height:1.55}
+
+/* === CODE DEMO === */
+.code-section{background:var(--navy);position:relative;overflow:hidden}
+.code-section::before{content:'';position:absolute;inset:0;background-image:linear-gradient(rgba(6,182,212,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(6,182,212,0.02) 1px,transparent 1px);background-size:48px 48px;pointer-events:none}
+.code-section .section-label{color:var(--cyan)}
+.code-section .section-title{color:#fff}
+.code-section .section-desc{color:rgba(255,255,255,0.45)}
+.code-window{position:relative;z-index:2;max-width:720px;margin:40px auto 0;background:#0b1220;border:1px solid rgba(255,255,255,0.07);border-radius:var(--radius);overflow:hidden}
+.code-window-bar{display:flex;align-items:center;gap:8px;padding:14px 18px;background:rgba(255,255,255,0.02);border-bottom:1px solid rgba(255,255,255,0.04)}
+.code-window-dot{width:10px;height:10px;border-radius:50%}
+.code-window-dot.r{background:#f43f5e}.code-window-dot.y{background:#f59e0b}.code-window-dot.g{background:#10b981}
+.code-window-title{font-size:12px;color:rgba(255,255,255,0.22);margin-left:8px;font-family:'SF Mono','Fira Code',monospace}
+.code-window pre{margin:0;padding:28px;overflow-x:auto}
+.code-window code{font-family:'SF Mono','Fira Code','Cascadia Code','JetBrains Mono',monospace;font-size:13px;line-height:1.75;color:#e2e8f0}
+.c-kw{color:#c084fc}.c-fn{color:#22d3ee}.c-str{color:#10b981}.c-cm{color:#64748b}
+.c-var{color:#f59e0b}.c-op{color:#94a3b8}.c-num{color:#fb7185}.c-type{color:#38bdf8}
+
+/* === CTA === */
+.cta-section{text-align:center}
+.cta-section .section-desc{margin:0 auto 32px}
+.cta-actions{display:flex;align-items:center;justify-content:center;gap:14px;flex-wrap:wrap}
+.btn-dark{display:inline-flex;align-items:center;gap:8px;padding:16px 32px;background:var(--ink);color:#fff;border-radius:var(--radius-sm);font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;letter-spacing:0.01em;transition:all 0.2s;border:none;cursor:pointer}
+.btn-dark:hover{background:#1e293b;transform:translateY(-1px);box-shadow:0 8px 24px rgba(15,23,42,0.18)}
+.btn-outline{display:inline-flex;align-items:center;gap:8px;padding:16px 32px;border:1px solid var(--border);border-radius:var(--radius-sm);font-family:'Space Grotesk',sans-serif;font-size:16px;font-weight:600;color:var(--ink);transition:all 0.2s;cursor:pointer;background:transparent}
+.btn-outline:hover{border-color:#cbd5e1;background:var(--surface-alt)}
+
+/* === FOOTER === */
+.footer{border-top:1px solid var(--border);padding:40px 0}
+.footer .container{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px}
+.footer-text{font-size:13px;color:var(--ink-muted);display:flex;align-items:center;gap:8px}
+.footer-links{display:flex;gap:20px}
+.footer-links a{font-size:13px;color:var(--ink-muted);transition:color 0.2s}
+.footer-links a:hover{color:var(--ink)}
+
+/* === RESPONSIVE === */
+@media(max-width:768px){
+  .section{padding:64px 0}
+  .hero{padding:120px 0 48px;min-height:auto}
+  .hero h1{font-size:36px}
+  .pain-grid,.features-grid{grid-template-columns:1fr;gap:16px}
+  .features-grid{gap:1px}
+  .chaos-canvas-wrap svg text{font-size:10px}
+  .code-window pre{padding:16px}
+  .code-window code{font-size:11px}
+  .nav-links{display:none}
+}
+@media(max-width:480px){
+  .container{padding:0 16px}
+  .hero-actions,.cta-actions{flex-direction:column;width:100%}
+  .hero-actions .btn-primary,.hero-actions .btn-secondary,
+  .cta-actions .btn-dark,.cta-actions .btn-outline{width:100%;justify-content:center}
+  .footer .container{flex-direction:column;text-align:center}
+}
+@media(prefers-reduced-motion:reduce){
+  .anim-trunk,.anim-branch-1,.anim-branch-2,.anim-branch-3{animation:none;stroke-dashoffset:0}
+  .anim-node{animation:none;opacity:1}
+  .anim-merge{animation:none;opacity:0.7}
+  .anim-label{animation:none;opacity:1;transform:none}
+  .scene-agent,.scene-file,.scene-conflict,.scene-order-line,
+  .scene-mesh-line,.scene-merge-arrow,.scene-status{transition:none}
+}
+:focus-visible{outline:2px solid var(--cyan);outline-offset:2px;border-radius:2px}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="container">
+    <a href="#" class="nav-logo">
+      <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:28px">
+        <path d="M24 3L38 10v14L24 31 10 24V10L24 3z" fill="#06b6d4" stroke="#06b6d4" stroke-width="1.5" stroke-linejoin="round"/>
+        <path d="M10 10L3 14v7l7 3.5" fill="#06b6d4" stroke="#06b6d4" stroke-width="1.5" stroke-linejoin="round" opacity="0.55"/>
+        <path d="M38 10L45 14v7l-7 3.5" fill="#06b6d4" stroke="#06b6d4" stroke-width="1.5" stroke-linejoin="round" opacity="0.3"/>
+      </svg>
+      gitmesh
+    </a>
+    <div class="nav-links">
+      <a href="#problem" class="nav-link">痛点</a>
+      <a href="#flow" class="nav-link">工作流程</a>
+      <a href="#features" class="nav-link">特性</a>
+      <a href="#demo" class="nav-link">示例</a>
+      <a href="https://github.com/neil-ji/git-mesh" class="nav-star" target="_blank" rel="noopener" id="navStar">
+        <i data-lucide="star" style="width:14px;height:14px"></i>
+        <span class="star-count" id="navStarCount">★</span>
+      </a>
+      <a href="https://github.com/neil-ji/git-mesh" class="nav-gh" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">
+      <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+      MIT License · Open Source
+    </div>
+    <h1>多 Agent 并行编码<br><em>Git 冲突解决方案</em></h1>
+    <p class="hero-subtitle">为多个 AI Agent 创建隔离工作区，自动合并代码，智能路由冲突。</p>
+    <div class="hero-actions">
+      <button class="btn-primary" onclick="copyInstall()">
+        <i data-lucide="clipboard-copy" style="width:18px;height:18px"></i>
+        npm install gitmesh
+      </button>
+      <a href="https://github.com/neil-ji/git-mesh" class="btn-star" target="_blank" rel="noopener" id="heroStar">
+        <i data-lucide="star" style="width:18px;height:18px"></i>
+        Star <span class="star-count" id="heroStarCount">—</span>
+      </a>
+      <a href="https://github.com/neil-ji/git-mesh" class="btn-secondary" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+
+    <!-- Hero git graph: phased narrative animation -->
+    <div class="hero-graph">
+      <svg viewBox="0 0 660 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Trunk -->
+        <path d="M20 170h620" stroke="rgba(255,255,255,0.15)" stroke-width="2" stroke-linecap="round" class="anim-trunk"/>
+
+        <!-- Branch A (cyan) -->
+        <path d="M140 170c20 0 30-60 60-60h160c30 0 40 60 60 60" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" fill="none" class="anim-branch-1"/>
+        <!-- Branch B (indigo) -->
+        <path d="M220 170c20 0 25-38 55-38h120c30 0 35 38 55 38" stroke="#6366f1" stroke-width="2" stroke-linecap="round" fill="none" class="anim-branch-2"/>
+        <!-- Branch C (violet) -->
+        <path d="M300 170c20 0 25-90 55-90h160c30 0 35 90 55 90" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" fill="none" class="anim-branch-3"/>
+
+        <!-- Branch commit nodes (appear in sequence) -->
+        <circle cx="200" cy="110" r="4" fill="#0a1424" stroke="#06b6d4" stroke-width="2" class="anim-node anim-node-1"/>
+        <circle cx="300" cy="110" r="4" fill="#0a1424" stroke="#06b6d4" stroke-width="2" class="anim-node anim-node-2"/>
+        <circle cx="360" cy="110" r="4" fill="#0a1424" stroke="#06b6d4" stroke-width="2" class="anim-node anim-node-3"/>
+
+        <circle cx="280" cy="132" r="4" fill="#0a1424" stroke="#6366f1" stroke-width="2" class="anim-node anim-node-4"/>
+        <circle cx="360" cy="132" r="4" fill="#0a1424" stroke="#6366f1" stroke-width="2" class="anim-node anim-node-5"/>
+
+        <circle cx="360" cy="80" r="4" fill="#0a1424" stroke="#a78bfa" stroke-width="2" class="anim-node anim-node-6"/>
+        <circle cx="440" cy="80" r="4" fill="#0a1424" stroke="#a78bfa" stroke-width="2" class="anim-node anim-node-7"/>
+        <circle cx="520" cy="80" r="4" fill="#0a1424" stroke="#a78bfa" stroke-width="2" class="anim-node anim-node-8"/>
+
+        <!-- Merge points (glow animation) -->
+        <circle cx="420" cy="170" r="3.5" fill="#10b981" class="anim-merge anim-merge-1"/>
+        <circle cx="450" cy="170" r="3.5" fill="#10b981" class="anim-merge anim-merge-2"/>
+        <circle cx="575" cy="170" r="3.5" fill="#10b981" class="anim-merge anim-merge-3"/>
+
+        <!-- Trunk commit dots -->
+        <circle cx="80" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="140" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="220" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="300" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="500" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="640" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+
+        <!-- Labels (fade in) -->
+        <text x="305" y="98" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="#06b6d4" class="anim-label anim-label-1">agent A · fix-auth</text>
+        <text x="340" y="150" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="#6366f1" class="anim-label anim-label-2">agent B · refactor</text>
+        <text x="460" y="66" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="#a78bfa" class="anim-label anim-label-3">agent C · add-api</text>
+        <text x="170" y="195" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="rgba(255,255,255,0.2)" class="anim-label anim-label-4">trunk</text>
+        <text x="432" y="155" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#10b981" class="anim-label anim-label-5">merged</text>
+        <text x="587" y="155" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#10b981" class="anim-label anim-label-6">merged</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- PAIN POINTS -->
+<section class="section" id="problem">
+  <div class="container">
+    <div class="section-label">The Problem</div>
+    <h2 class="section-title">没有 gitmesh 时，<br>多 Agent 协作一团乱</h2>
+    <p class="section-desc">多个 Agent 同时改一个仓库，三个最常见的麻烦。</p>
+    <div class="pain-grid">
+      <div class="pain-card">
+        <div class="pain-icon warn">
+          <i data-lucide="alert-triangle" style="width:20px;height:20px"></i>
+        </div>
+        <h3>工作区相互覆盖</h3>
+        <p>共享目录里并行编码，文件互相踩踏，git 操作互相打断。</p>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon cycle">
+          <i data-lucide="refresh-cw" style="width:20px;height:20px"></i>
+        </div>
+        <h3>合并顺序混乱</h3>
+        <p>完成时间不可预测，先合的可能冲突后合的。手动协调费时易错。</p>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon error">
+          <i data-lucide="x-circle" style="width:20px;height:20px"></i>
+        </div>
+        <h3>冲突无人解决</h3>
+        <p>改同一文件产生冲突，上下文不全难定位，一个失败阻塞全流程。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GITMESH FLOW ANIMATION -->
+<section class="flow-section" id="flow">
+  <div class="container section" style="padding:100px 0">
+    <div class="section-label">How It Works</div>
+    <h2 class="section-title">多 Agent 协作，<br>gitmesh 全自动编排</h2>
+    <p class="section-desc">编排服务持有主仓库，为每个 Agent 创建独立 worktree，全程自动编排。</p>
+
+    <div class="flow-scene" id="flowScene">
+      <!-- SVG connecting lines -->
+      <svg class="flow-lines" id="flowLines" preserveAspectRatio="none">
+        <path id="lineShared" d="" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-dasharray="6 4" opacity="0"/>
+        <path id="lineA" d="" stroke="#06b6d4" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" opacity="0"/>
+        <path id="lineB" d="" stroke="#6366f1" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" opacity="0"/>
+        <path id="lineC" d="" stroke="#a78bfa" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" opacity="0"/>
+        <circle id="dotOrigin" cx="0" cy="0" r="6" fill="#0b1222" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" opacity="0"/>
+        <circle id="dotA" cx="0" cy="0" r="3.5" fill="#06b6d4" opacity="0"/>
+        <circle id="dotB" cx="0" cy="0" r="3.5" fill="#6366f1" opacity="0"/>
+        <circle id="dotC" cx="0" cy="0" r="3.5" fill="#a78bfa" opacity="0"/>
+      </svg>
+
+      <!-- Orchestrator -->
+      <div class="orc-panel" id="orcPanel" style="position:relative">
+        <div class="orc-header">
+          <span class="orc-header-dot r"></span><span class="orc-header-dot y"></span><span class="orc-header-dot g"></span>
+          <span class="orc-header-title">gitmesh orchestrator</span>
+        </div>
+        <div class="orc-body">
+          <div class="orc-repo">
+            <i data-lucide="git-branch" style="width:12px;height:12px;opacity:0.4"></i>
+            repo: <span style="color:rgba(255,255,255,0.4)">main</span>
+          </div>
+          <div class="orc-head">
+            <span class="orc-head-label">HEAD</span>
+            <span class="orc-head-hash" id="orcHeadHash">a1b2c3d</span>
+          </div>
+          <div class="orc-log" id="orcLog"></div>
+          <div class="orc-merge-badge" id="orcMergeBadge">
+            <i data-lucide="check" style="width:12px;height:12px"></i>
+            merge engine active
+          </div>
+          <div class="orc-done-check" id="orcDoneCheck">
+            <i data-lucide="check-circle" style="width:28px;height:28px;color:#10b981"></i>
+          </div>
+        </div>
+        <!-- Conflict popup -->
+        <div class="orc-conflict-popup" id="conflictPopup">
+          <div class="title">conflict detected</div>
+          <div class="file">src/auth.ts · 2 处冲突</div>
+          <div class="arrow">→ routing to Agent B</div>
+        </div>
+      </div>
+
+      <!-- Agent panels -->
+      <div class="agent-col" id="agentCol">
+        <div class="agent-panel" id="agentA" style="opacity:0.3">
+          <div class="agent-panel-header">
+            <span class="agent-panel-name"><span class="dot a"></span>Agent A · fix-auth</span>
+            <span class="agent-panel-wt">~/mesh/fix-auth</span>
+          </div>
+          <div class="agent-panel-body" id="agentABody"></div>
+          <div class="agent-panel-status" id="agentAStatus"><span class="status-icon"></span>idle</div>
+        </div>
+        <div class="agent-panel" id="agentB" style="opacity:0.3">
+          <div class="agent-panel-header">
+            <span class="agent-panel-name"><span class="dot b"></span>Agent B · refactor-db</span>
+            <span class="agent-panel-wt">~/mesh/refactor-db</span>
+          </div>
+          <div class="agent-panel-body" id="agentBBody"></div>
+          <div class="agent-panel-status" id="agentBStatus"><span class="status-icon"></span>idle</div>
+        </div>
+        <div class="agent-panel" id="agentC" style="opacity:0.3">
+          <div class="agent-panel-header">
+            <span class="agent-panel-name"><span class="dot c"></span>Agent C · add-tests</span>
+            <span class="agent-panel-wt">~/mesh/add-tests</span>
+          </div>
+          <div class="agent-panel-body" id="agentCBody"></div>
+          <div class="agent-panel-status" id="agentCStatus"><span class="status-icon"></span>idle</div>
+        </div>
+      </div>
+    </div>
+    <!-- Narration -->
+    <div class="flow-narration" id="flowNarration">
+      <span id="narrationText"></span>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">为多 Agent 协作<br>从头设计的 Git 编排层</h2>
+    <p class="section-desc">不是 CI，不是 Agent 框架 — 只管多 Agent 的 git 操作。</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="fc-icon c1">
+          <i data-lucide="layout-grid" style="width:18px;height:18px"></i>
+        </div>
+        <h4>多 Worktree 隔离</h4>
+        <p>独立工作目录和分支，并行编码互不影响。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c2">
+          <i data-lucide="git-branch" style="width:18px;height:18px"></i>
+        </div>
+        <h4>Rebase-First 合并</h4>
+        <p>线性 git 历史，冲突在 worktree 内解决，不污染主干。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c3">
+          <i data-lucide="check-circle" style="width:18px;height:18px"></i>
+        </div>
+        <h4>智能冲突路由</h4>
+        <p>检测冲突，携带完整上下文路由回对应 Agent 自行解决。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c4">
+          <i data-lucide="rotate-cw" style="width:18px;height:18px"></i>
+        </div>
+        <h4>重试循环</h4>
+        <p>冲突解决后自动重试 rebase，直到成功或超限。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c5">
+          <i data-lucide="shield" style="width:18px;height:18px"></i>
+        </div>
+        <h4>失败隔离</h4>
+        <p>单 Agent 失败不阻塞其他，保留 worktree 供人工介入。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c6">
+          <i data-lucide="radio" style="width:18px;height:18px"></i>
+        </div>
+        <h4>事件驱动观测</h4>
+        <p>8 个 typed 事件覆盖全流程，实时观测进度和状态。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CODE DEMO -->
+<section class="code-section" id="demo">
+  <div class="container section" style="padding:100px 0">
+    <div class="section-label">Quick Start</div>
+    <h2 class="section-title">10 行代码，<br>启动多 Agent 协作</h2>
+    <p class="section-desc">Claude SDK / Shell 脚本 / HTTP 回调 — 任意 Agent 实现均可接入。</p>
+    <div class="code-window">
+      <div class="code-window-bar">
+        <span class="code-window-dot r"></span><span class="code-window-dot y"></span><span class="code-window-dot g"></span>
+        <span class="code-window-title">session.ts</span>
+      </div>
+      <pre><code><span class="c-kw">import</span> { gitmesh } <span class="c-kw">from</span> <span class="c-str">"gitmesh"</span>;
+
+<span class="c-kw">const</span> <span class="c-var">session</span> = <span class="c-kw">await</span> <span class="c-fn">gitmesh</span>({
+  <span class="c-var">cwd</span>: <span class="c-str">"/path/to/repo"</span>,
+  <span class="c-var">strategy</span>: <span class="c-str">"rebase-first"</span>,
+  <span class="c-var">agents</span>: [
+    {
+      <span class="c-var">name</span>: <span class="c-str">"fix-auth"</span>,
+      <span class="c-cm">// worktree 就绪，Agent 开始编码</span>
+      <span class="c-fn">onReady</span>: <span class="c-kw">async</span> (<span class="c-var">signal</span>) => {
+        <span class="c-kw">await</span> <span class="c-fn">runAgent</span>({ <span class="c-var">cwd</span>: <span class="c-var">signal</span>.<span class="c-var">worktreePath</span> });
+        <span class="c-var">signal</span>.<span class="c-fn">done</span>();
+      },
+      <span class="c-cm">// 冲突时路由给 Agent 自行解决</span>
+      <span class="c-fn">onConflict</span>: <span class="c-kw">async</span> (<span class="c-var">conflict</span>) => {
+        <span class="c-kw">return</span> <span class="c-fn">runConflictResolver</span>(<span class="c-var">conflict</span>);
+      },
+    },
+  ],
+});
+
+<span class="c-var">session</span>.<span class="c-fn">on</span>(<span class="c-str">"mesh:merged"</span>, (<span class="c-var">name</span>, <span class="c-var">commit</span>) => {
+  <span class="c-var">console</span>.<span class="c-fn">log</span>(<span class="c-str">`merged: </span><span class="c-op">${</span><span class="c-var">name</span><span class="c-op">}</span><span class="c-str">`</span>);
+});
+
+<span class="c-kw">const</span> <span class="c-var">summary</span> = <span class="c-kw">await</span> <span class="c-var">session</span>.<span class="c-fn">done</span>();</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- BOTTOM CTA -->
+<section class="section cta-section">
+  <div class="container">
+    <h2 class="section-title">准备好让 Agent 们<br>高效协作了？</h2>
+    <p class="section-desc">MIT 开源 · TypeScript · npm install gitmesh</p>
+    <div class="cta-actions">
+      <button class="btn-dark" onclick="copyInstall()">
+        <i data-lucide="clipboard-copy" style="width:18px;height:18px"></i>
+        npm install gitmesh
+      </button>
+      <a href="https://github.com/neil-ji/git-mesh" class="btn-outline" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <span class="footer-text">
+      <svg width="16" height="16" viewBox="0 0 48 48" fill="none"><path d="M24 4L44 14v20L24 44 4 34V14L24 4z" stroke="#94a3b8" stroke-width="2.5" stroke-linejoin="round"/></svg>
+      gitmesh · MIT License
+    </span>
+    <div class="footer-links">
+      <a href="https://github.com/neil-ji/git-mesh">GitHub</a>
+      <a href="https://www.npmjs.com/package/gitmesh">npm</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+// Init Lucide icons
+if(typeof lucide!=='undefined')lucide.createIcons();
+
+// Copy to clipboard
+function copyInstall(){
+  navigator.clipboard.writeText('npm install gitmesh').then(function(){
+    var btns=document.querySelectorAll('.btn-primary,.btn-dark');
+    btns.forEach(function(btn){
+      var orig=btn.innerHTML;
+      btn.innerHTML='<i data-lucide="check" style="width:18px;height:18px"></i> Copied!';if(typeof lucide!=='undefined')lucide.createIcons();
+      btn.style.background='#10b981';btn.style.color='#fff';
+      setTimeout(function(){btn.innerHTML=orig;btn.style.background='';btn.style.color=''},2000);
+    });
+  });
+}
+
+// Nav scroll
+;(function(){
+  window.addEventListener('scroll',function(){
+    document.getElementById('nav').classList.toggle('scrolled',window.scrollY>20);
+  });
+})();
+
+// === GSAP ANIMATION: gitmesh workflow ===
+;(function(){
+  if(typeof gsap==='undefined')return;
+
+  var orcLog=document.getElementById('orcLog');
+  var orcHeadHash=document.getElementById('orcHeadHash');
+  var orcMergeBadge=document.getElementById('orcMergeBadge');
+  var orcDoneCheck=document.getElementById('orcDoneCheck');
+  var conflictPopup=document.getElementById('conflictPopup');
+  var agentA=document.getElementById('agentA');
+  var agentB=document.getElementById('agentB');
+  var agentC=document.getElementById('agentC');
+  var bodyA=document.getElementById('agentABody');
+  var bodyB=document.getElementById('agentBBody');
+  var bodyC=document.getElementById('agentCBody');
+  var statusA=document.getElementById('agentAStatus');
+  var statusB=document.getElementById('agentBStatus');
+  var statusC=document.getElementById('agentCStatus');
+
+  // Helper: add log line to orchestrator
+  function log(msg,cls){
+    var line=document.createElement('div');
+    line.className='orc-log-line '+(cls||'');
+    var now=new Date();
+    var ts=now.getHours()+':'+String(now.getMinutes()).padStart(2,'0')+':'+String(now.getSeconds()).padStart(2,'0');
+    line.innerHTML='<span class="ts">'+ts+'</span><span class="msg">'+msg+'</span>';
+    orcLog.appendChild(line);
+    orcLog.scrollTop=orcLog.scrollHeight;
+    return line;
+  }
+
+  // Helper: set agent status
+  function agentStatus(el,text,iconCls,cls){
+    el.innerHTML='<span class="status-icon '+iconCls+'"></span>'+text;
+    el.className='agent-panel-status '+(cls||'');
+  }
+
+  // Helper: set agent body text
+  function agentBody(el,lines){
+    el.innerHTML=lines.map(function(l){
+      return '<div class="agent-line '+l.cls+'">'+l.txt+'</div>';
+    }).join('');
+  }
+  var tl=gsap.timeline({paused:true,repeat:-1,repeatDelay:6});
+
+  var lineShared=document.getElementById('lineShared');
+  var lineA=document.getElementById('lineA');
+  var lineB=document.getElementById('lineB');
+  var lineC=document.getElementById('lineC');
+  var dotOrigin=document.getElementById('dotOrigin');
+  var dotA=document.getElementById('dotA');
+  var dotB=document.getElementById('dotB');
+  var dotC=document.getElementById('dotC');
+  var flowScene=document.getElementById('flowScene');
+
+  // Position connector lines between orchestrator and agent panels
+  var x2a,y2a,x2b,y2b,x2c,y2c;
+  function updateLines(){
+    if(!flowScene)return;
+    var sceneRect=flowScene.getBoundingClientRect();
+    var svg=document.getElementById('flowLines');
+    svg.setAttribute('viewBox','0 0 '+sceneRect.width+' '+sceneRect.height);
+    svg.setAttribute('width',sceneRect.width);
+    svg.setAttribute('height',sceneRect.height);
+    var orcRect=orcPanel.getBoundingClientRect();
+    // All lines start from same point: right-center of orchestrator
+    var x1=orcRect.right-sceneRect.left;
+    var y1=orcRect.top-sceneRect.top+orcRect.height/2;
+    dotOrigin.setAttribute('cx',x1);dotOrigin.setAttribute('cy',y1);
+    // Each agent endpoint
+    var agents=[agentA,agentB,agentC],agentLines=[lineA,lineB,lineC],agentDots=[dotA,dotB,dotC];
+    agents.forEach(function(agent,i){
+      var aRect=agent.getBoundingClientRect();
+      var x2=aRect.left-sceneRect.left;
+      var y2=aRect.top-sceneRect.top+aRect.height/2;
+      // Shared horizontal segment from origin to midpoint, then agent-specific vertical+horizontal
+      var mx=x1+(x2-x1)*0.45;
+      if(i===0)lineShared.setAttribute('d','M'+x1+' '+y1+' L'+mx+' '+y1);
+      agentLines[i].setAttribute('d','M'+mx+' '+y1+' L'+mx+' '+y2+' L'+x2+' '+y2);
+      agentDots[i].setAttribute('cx',x2);agentDots[i].setAttribute('cy',y2);
+    });
+  }
+
+  // === ACT 1: Initialization (0-6s) ===
+
+  // Narration
+  tl.call(function(){document.getElementById('narrationText').textContent='gitmesh 为每个 Agent 创建独立的 git worktree'},null,0.1);
+
+  // Log lines
+  tl.call(function(){log('gitmesh({ agents: [A, B, C] })','info');},null,0);
+  tl.call(function(){log('validating git environment...','info');},null,0.8);
+
+  // Position lines on enter
+  tl.call(function(){updateLines();},null,0.1);
+
+  // Activate agents + show connector lines
+  tl.to([agentA,agentB,agentC],{opacity:1,duration:0.6,stagger:0.3},1.5);
+  // Show lines & dots with staggered fade-in
+  tl.to(dotOrigin,{opacity:1,duration:0.3},2.2);
+  tl.to(lineShared,{opacity:1,duration:0.3},2.2);
+  tl.to(lineA,{opacity:1,duration:0.5},2.4);
+  tl.to(dotA,{opacity:1,duration:0.3},2.4);
+  tl.to(lineB,{opacity:1,duration:0.5},2.8);
+  tl.to(dotB,{opacity:1,duration:0.3},2.8);
+  tl.to(lineC,{opacity:1,duration:0.5},3.2);
+  tl.to(dotC,{opacity:1,duration:0.3},3.2);
+  tl.call(function(){log('worktree:ready → Agent A','info');},null,2.4);
+  tl.call(function(){log('worktree:ready → Agent B','info');},null,2.8);
+  tl.call(function(){log('worktree:ready → Agent C','info');},null,3.2);
+  tl.call(function(){
+    agentStatus(statusA,'worktree ready','ready','');
+    agentStatus(statusB,'worktree ready','ready','');
+    agentStatus(statusC,'worktree ready','ready','');
+  },null,2.4);
+
+  tl.call(function(){log('onReady(signal) → Agent A / B / C','info');},null,4.0);
+
+  // Show agent bodies with prompt
+  tl.call(function(){
+    agentBody(bodyA,[
+      {txt:'⏺ I\'ll fix the OAuth token refresh logic.',cls:'prompt'},
+      {txt:'',cls:'dim'},
+      {txt:'',cls:'dim'},
+      {txt:'',cls:'dim'},
+    ]);
+    agentBody(bodyB,[
+      {txt:'⏺ I\'ll refactor the database migration layer.',cls:'prompt'},
+      {txt:'',cls:'dim'},
+      {txt:'',cls:'dim'},
+      {txt:'',cls:'dim'},
+    ]);
+    agentBody(bodyC,[
+      {txt:'⏺ I\'ll add unit tests for auth module.',cls:'prompt'},
+      {txt:'',cls:'dim'},
+      {txt:'',cls:'dim'},
+      {txt:'',cls:'dim'},
+    ]);
+    agentStatus(statusA,'coding...','working','');
+    agentStatus(statusB,'coding...','working','');
+    agentStatus(statusC,'coding...','working','');
+  },null,5.0);
+
+  // === ACT 2: Agents Working (6-14s) ===
+
+  tl.call(function(){document.getElementById('narrationText').textContent='Agent 在隔离的 worktree 中并行编码，互不干扰'},null,6.0);
+
+  // Agent A: edit + commit
+  tl.call(function(){
+    agentBody(bodyA,[
+      {txt:'⏺ I\'ll fix the OAuth token refresh logic.',cls:'dim'},
+      {txt:'● Edit: src/auth.ts  +32 -8',cls:'cmd'},
+      {txt:'● Bash: git add src/auth.ts && git commit',cls:'cmd'},
+      {txt:'  [mesh/fix-auth a7d3f1e] fix: OAuth token',cls:'dim'},
+    ]);
+  },null,6.0);
+  tl.call(function(){
+    agentBody(bodyA,[
+      {txt:'⏺ I\'ll fix the OAuth token refresh logic.',cls:'dim'},
+      {txt:'● Edit: src/auth.ts  +32 -8',cls:'dim'},
+      {txt:'● Bash: git add src/auth.ts && git commit',cls:'dim'},
+      {txt:'  [mesh/fix-auth a7d3f1e] fix: OAuth token',cls:'dim'},
+      {txt:'✓ signal.done()',cls:'done'},
+    ]);
+    agentStatus(statusA,'done','done','ok');
+  },null,11.0);
+
+  // Agent B: edit + commit
+  tl.call(function(){
+    agentBody(bodyB,[
+      {txt:'⏺ I\'ll refactor the database migration layer.',cls:'dim'},
+      {txt:'● Edit: src/db/migrate.ts  +45 -12',cls:'cmd'},
+      {txt:'● Bash: git commit -m "refactor: db"',cls:'cmd'},
+      {txt:'  [mesh/refactor-db b8e4f2d] refactor: db',cls:'dim'},
+    ]);
+  },null,7.0);
+  tl.call(function(){
+    agentBody(bodyB,[
+      {txt:'⏺ I\'ll refactor the database migration layer.',cls:'dim'},
+      {txt:'● Edit: src/db/migrate.ts  +45 -12',cls:'dim'},
+      {txt:'● Bash: git commit -m "refactor: db"',cls:'dim'},
+      {txt:'  [mesh/refactor-db b8e4f2d] refactor: db',cls:'dim'},
+      {txt:'✓ signal.done()',cls:'done'},
+    ]);
+    agentStatus(statusB,'done','done','ok');
+  },null,12.5);
+
+  // Agent C: write test + commit
+  tl.call(function(){
+    agentBody(bodyC,[
+      {txt:'⏺ I\'ll add unit tests for auth module.',cls:'dim'},
+      {txt:'● Write: test/auth.test.ts  +120',cls:'cmd'},
+      {txt:'● Bash: git add test/ && git commit',cls:'cmd'},
+      {txt:'  [mesh/add-tests c9f5a3e] test: auth coverage',cls:'dim'},
+    ]);
+  },null,8.0);
+  tl.call(function(){
+    agentBody(bodyC,[
+      {txt:'⏺ I\'ll add unit tests for auth module.',cls:'dim'},
+      {txt:'● Write: test/auth.test.ts  +120',cls:'dim'},
+      {txt:'● Bash: git add test/ && git commit',cls:'dim'},
+      {txt:'  [mesh/add-tests c9f5a3e] test: auth coverage',cls:'dim'},
+      {txt:'✓ signal.done()',cls:'done'},
+    ]);
+    agentStatus(statusC,'done','done','ok');
+  },null,13.5);
+
+  // === ACT 3: Merge Engine — Rebase (14-20s) ===
+
+  tl.call(function(){document.getElementById('narrationText').textContent='merge engine 启动，逐个 rebase Agent 分支到主干 HEAD'},null,14.0);
+  tl.call(function(){log('merge engine started','info');},null,14.0);
+  tl.to(orcMergeBadge,{opacity:1,duration:0.4},14.0);
+
+  // Agent A rebase success
+  tl.call(function(){log('rebase mesh/fix-auth onto main HEAD','info');},null,14.6);
+  tl.call(function(){agentStatus(statusA,'rebasing...','working','');},null,14.6);
+  tl.call(function(){log('✓ rebase success → fast-forward merge','ok');},null,16.0);
+  tl.to(lineA,{stroke:'#10b981',duration:0.5},16.0);
+  tl.to(dotA,{fill:'#10b981',duration:0.5},16.0);
+  tl.call(function(){agentStatus(statusA,'merged ✓','done','ok');orcHeadHash.textContent='d4e5f6a';},null,16.5);
+
+  // Agent B rebase → CONFLICT
+  tl.call(function(){log('rebase mesh/refactor-db onto main HEAD','info');},null,17.0);
+  tl.call(function(){agentStatus(statusB,'rebasing...','working','');},null,17.0);
+  tl.call(function(){document.getElementById('narrationText').textContent='检测到冲突 → 路由给 Agent B 自行解决'},null,18.0);
+  tl.call(function(){log('✗ CONFLICT: src/auth.ts','err');},null,18.0);
+  tl.call(function(){agentStatus(statusB,'conflict!','conflict','warn');},null,18.0);
+  // Agent B line & dot turn red
+  tl.to(lineB,{stroke:'#f43f5e',strokeWidth:2.5,duration:0.5},18.0);
+  tl.to(dotB,{fill:'#f43f5e',duration:0.5},18.0);
+  tl.to(conflictPopup,{opacity:1,duration:0.4},18.2);
+  tl.call(function(){log('→ routing onConflict to Agent B','warn');},null,18.8);
+
+  // === ACT 4: Conflict Resolution (20-28s) ===
+
+  tl.call(function(){document.getElementById('narrationText').textContent='Agent B 查看冲突内容，编辑文件，git add → rebase --continue'},null,20.0);
+
+  // Agent B resolves — 3 frames with longer pauses for reading
+  tl.call(function(){
+    agentBody(bodyB,[
+      {txt:'⚠ CONFLICT received from gitmesh',cls:'conflict-marker'},
+      {txt:'',cls:'dim'},
+      {txt:'● Read: src/auth.ts',cls:'cmd'},
+      {txt:'  <<<<<<< HEAD (main)',cls:'conflict-marker'},
+      {txt:'  export async function refreshToken() {',cls:'conflict-marker'},
+      {txt:'  =======',cls:'conflict-marker'},
+      {txt:'  >>>>>>> mesh/refactor-db',cls:'conflict-marker'},
+    ]);
+  },null,20.0);
+
+  tl.call(function(){
+    agentBody(bodyB,[
+      {txt:'⚠ CONFLICT received from gitmesh',cls:'dim'},
+      {txt:'',cls:'dim'},
+      {txt:'● Read: src/auth.ts',cls:'dim'},
+      {txt:'  <<<<<<< resolved',cls:'dim'},
+      {txt:'● Edit: src/auth.ts ← resolving conflict',cls:'cmd'},
+      {txt:'  Merged both changes: async + return type',cls:'file'},
+      {txt:'● Bash: git add src/auth.ts',cls:'cmd'},
+    ]);
+  },null,22.5);
+
+  tl.call(function(){
+    agentBody(bodyB,[
+      {txt:'⚠ CONFLICT received from gitmesh',cls:'dim'},
+      {txt:'',cls:'dim'},
+      {txt:'● Read: src/auth.ts',cls:'dim'},
+      {txt:'  <<<<<<< resolved',cls:'dim'},
+      {txt:'● Edit: src/auth.ts ← resolving conflict',cls:'dim'},
+      {txt:'  Merged both changes: async + return type',cls:'dim'},
+      {txt:'● Bash: git add src/auth.ts',cls:'dim'},
+      {txt:'● Bash: git rebase --continue',cls:'cmd'},
+      {txt:'✓ conflict resolved → signal.done()',cls:'done'},
+    ]);
+    agentStatus(statusB,'resolved','done','ok');
+  },null,25.0);
+
+  tl.to(conflictPopup,{opacity:0,duration:0.4},25.5);
+  // Agent B line & dot turn green — conflict resolved
+  tl.to(lineB,{stroke:'#10b981',strokeWidth:1.5,duration:0.6},25.5);
+  tl.to(dotB,{fill:'#10b981',duration:0.6},25.5);
+  tl.call(function(){document.getElementById('narrationText').textContent='冲突已解决，重新 rebase 成功，所有 Agent 合入主干'},null,25.8);
+  tl.call(function(){log('✓ conflict resolved by Agent B','ok');},null,25.8);
+  tl.call(function(){log('rebase retry → success → merge','ok');},null,26.8);
+  tl.call(function(){orcHeadHash.textContent='e7f8a9b';},null,27.2);
+
+  // Agent C rebase (clean)
+  tl.call(function(){log('rebase mesh/add-tests onto main HEAD','info');},null,27.5);
+  tl.call(function(){agentStatus(statusC,'rebasing...','working','');},null,27.5);
+  tl.call(function(){log('✓ rebase success → fast-forward merge','ok');},null,28.5);
+  tl.to(lineC,{stroke:'#10b981',duration:0.5},28.5);
+  tl.to(dotC,{fill:'#10b981',duration:0.5},28.5);
+  tl.call(function(){agentStatus(statusC,'merged ✓','done','ok');orcHeadHash.textContent='3f8e2a1';},null,29.0);
+
+  // === ACT 5: Done (29-35s) ===
+
+  tl.call(function(){document.getElementById('narrationText').textContent='全部 Agent 合并成功，worktree 清理，session 结束'},null,29.0);
+  tl.to(orcMergeBadge,{opacity:0,duration:0.4},29.5);
+  tl.call(function(){log('session done · 3/3 merged · trunk clean','ok');},null,30.0);
+  tl.to(orcDoneCheck,{opacity:1,duration:0.6},30.5);
+
+  // Fade agents and lines
+  tl.to([agentA,agentB,agentC],{opacity:0.25,duration:1.0},32.0);
+  tl.to([lineShared,lineA,lineB,lineC],{opacity:0,duration:0.8},32.0);
+  tl.to([dotOrigin,dotA,dotB,dotC],{opacity:0,duration:0.8},32.0);
+  tl.call(function(){
+    agentStatus(statusA,'cleaned','','');
+    agentStatus(statusB,'cleaned','','');
+    agentStatus(statusC,'cleaned','','');
+  },null,33.0);
+
+  // Reset for loop — clear logs and return to start
+  tl.call(function(){
+    orcLog.innerHTML='';
+    orcHeadHash.textContent='a1b2c3d';
+    orcDoneCheck.style.opacity='0';
+    agentBody(bodyA,'');
+    agentBody(bodyB,'');
+    agentBody(bodyC,'');
+    // Reset lines to original agent colors
+    gsap.set(lineShared,{opacity:0});
+    gsap.set(lineA,{opacity:0,stroke:'#06b6d4',strokeWidth:1.5});
+    gsap.set(lineB,{opacity:0,stroke:'#6366f1',strokeWidth:1.5});
+    gsap.set(lineC,{opacity:0,stroke:'#a78bfa',strokeWidth:1.5});
+    gsap.set(dotOrigin,{opacity:0});
+    gsap.set(dotA,{opacity:0,fill:'#06b6d4'});
+    gsap.set(dotB,{opacity:0,fill:'#6366f1'});
+    gsap.set(dotC,{opacity:0,fill:'#a78bfa'});
+  },null,35.0);
+
+  // ScrollTrigger to start/stop
+  var st=ScrollTrigger.create({
+    trigger:'#flowScene',
+    start:'top 80%',
+    end:'bottom 20%',
+    onEnter:function(){updateLines();tl.play();},
+    onLeave:function(){tl.pause();},
+    onEnterBack:function(){updateLines();tl.play();},
+    onLeaveBack:function(){tl.pause();},
+  });
+
+  // Recalculate lines on resize
+  window.addEventListener('resize',function(){if(!tl.paused())updateLines();});
+
+  // Reduced motion: show static merge state
+  if(window.matchMedia('(prefers-reduced-motion:reduce)').matches){
+    tl.pause();
+    tl.seek(14);
+    st.kill();
+  }
+})();
+
+// Fetch GitHub star count
+(async function(){
+  try{
+    const res=await fetch('https://api.github.com/repos/neil-ji/git-mesh');
+    if(!res.ok)return;
+    const data=await res.json();
+    const count=data.stargazers_count;
+    if(count!=null){
+      const fmt=count>=1000?(count/1000).toFixed(1)+'k':count;
+      document.querySelectorAll('.star-count').forEach(el=>el.textContent=fmt);
+    }
+  }catch(e){}
+})();
+</script>
+</body>
+</html>
