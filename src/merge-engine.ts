@@ -1,0 +1,475 @@
+/**
+ * 合并引擎主逻辑。
+ *
+ * 负责：
+ * - 维护合并队列
+ * - 按策略执行 rebase → merge 流程
+ * - 冲突检测与路由
+ * - 重试循环管理
+ * - 主干更新后重启未完成的 rebase
+ */
+
+import { TypedEventEmitter } from "./events";
+import { AsyncLock } from "./lock";
+import { rebaseBranch, continueRebase, abortRebase, isRebasing } from "./rebase";
+import { fastForwardMerge } from "./merge";
+import { buildConflictInfo, hasConflicts } from "./conflict";
+import { getTrunkHead, removeWorktree } from "./worktree";
+import {
+  createRetryState,
+  canRetry,
+  incrementRetry,
+  resolveWithTimeout,
+} from "./retry";
+import {
+  MergeEngineError,
+  AgentAbandonError,
+  AgentTimeoutError,
+  AgentResolveError,
+} from "./errors";
+import type {
+  QueueItem,
+  AgentResult,
+  ConflictInfo,
+  ResolutionResult,
+  SessionEvents,
+} from "./types";
+
+export type { QueueItem, AgentResult };
+
+export interface MergeEngineOptions {
+  cwd: string;
+  trunkBranch: string;
+  workspaceDir: string;
+  branchPrefix: string;
+  maxRetries: number;
+  conflictTimeout: number;
+  strategy: string;
+}
+
+/**
+ * 合并引擎内部状态
+ */
+type AgentState =
+  | "queued"
+  | "rebasing"
+  | "conflict"
+  | "waiting_for_lock"
+  | "merged"
+  | "failed";
+
+interface AgentEntry {
+  item: QueueItem;
+  state: AgentState;
+  trunkHeadAtStart: string;
+  retryState: ReturnType<typeof createRetryState>;
+  result?: AgentResult;
+  abortController: AbortController;
+}
+
+export class MergeEngine extends TypedEventEmitter<SessionEvents> {
+  private opts: MergeEngineOptions;
+  private queue: AgentEntry[] = [];
+  private mergeLock: AsyncLock = new AsyncLock();
+  private trunkHead: string = "";
+  private isRunning: boolean = false;
+  private isAborted: boolean = false;
+  private resolveDone: ((value: AgentResult[]) => void) | null = null;
+  private activeCount: number = 0;
+
+  constructor(opts: MergeEngineOptions) {
+    super();
+    this.opts = opts;
+  }
+
+  /**
+   * 添加 Agent 到合并队列，开始处理
+   */
+  enqueue(item: QueueItem): void {
+    const entry: AgentEntry = {
+      item,
+      state: "queued",
+      trunkHeadAtStart: "",
+      retryState: createRetryState(this.opts.maxRetries),
+      abortController: new AbortController(),
+    };
+    this.queue.push(entry);
+    this.activeCount++;
+
+    // 如果引擎已经在运行，处理会在 processQueue 中自动进行
+    // 否则，需要启动（由 start 调用触发第一次 processQueue）
+  }
+
+  /**
+   * 启动合并引擎
+   */
+  async start(): Promise<AgentResult[]> {
+    this.isRunning = true;
+    this.isAborted = false;
+
+    // 获取初始 trunk HEAD
+    this.trunkHead = await getTrunkHead(this.opts.cwd, this.opts.trunkBranch);
+
+    return new Promise<AgentResult[]>((resolve) => {
+      this.resolveDone = resolve;
+
+      // 给一点时间让 agents 入队，然后开始处理
+      setImmediate(() => this.processQueue());
+    });
+  }
+
+  /**
+   * 中断合并引擎
+   */
+  abort(): void {
+    this.isAborted = true;
+    // 取消所有正在进行的操作
+    for (const entry of this.queue) {
+      entry.abortController.abort();
+    }
+  }
+
+  /**
+   * 处理队列的主循环
+   * rebase-first 策略：并发 rebase，串行合并
+   */
+  private processQueue(): void {
+    if (this.isAborted) {
+      this.checkAllDone();
+      return;
+    }
+
+    // 找到所有 queued 状态的 agent 并发启动 rebase
+    const queued = this.queue.filter((e) => e.state === "queued");
+    for (const entry of queued) {
+      entry.state = "rebasing";
+      entry.trunkHeadAtStart = this.trunkHead;
+      this.processRebase(entry);
+    }
+
+    this.checkAllDone();
+  }
+
+  /**
+   * 处理单个 Agent 的 rebase 流程
+   */
+  private async processRebase(entry: AgentEntry): Promise<void> {
+    const { item, abortController } = entry;
+    const signal = abortController.signal;
+
+    try {
+      if (signal.aborted) return;
+
+      this.emit("mesh:rebase", item.agentName);
+
+      const rebaseResult = await rebaseBranch(
+        item.worktreePath,
+        this.opts.trunkBranch
+      );
+
+      if (signal.aborted) return;
+
+      if (rebaseResult.success) {
+        // Rebase 成功，进入合并阶段
+        await this.processMerge(entry);
+      } else {
+        // Rebase 冲突
+        entry.state = "conflict";
+        await this.processConflict(entry, rebaseResult.files);
+      }
+    } catch (err) {
+      if (signal.aborted) return;
+      await this.handleFailure(
+        entry,
+        `Rebase error: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  /**
+   * 处理冲突：通知 Agent，等待解决
+   */
+  private async processConflict(
+    entry: AgentEntry,
+    conflictFiles: import("./types").ConflictFile[]
+  ): Promise<void> {
+    const { item, abortController } = entry;
+    const signal = abortController.signal;
+
+    if (!canRetry(entry.retryState)) {
+      await this.handleFailure(
+        entry,
+        `Max retries (${this.opts.maxRetries}) exceeded`
+      );
+      return;
+    }
+
+    incrementRetry(entry.retryState);
+
+    const conflictInfo = buildConflictInfo({
+      agentName: item.agentName,
+      files: conflictFiles,
+      attempt: entry.retryState.attempt,
+      maxRetries: this.opts.maxRetries,
+      targetCommit: this.trunkHead,
+      sourceCommit: entry.trunkHeadAtStart,
+      worktreePath: item.worktreePath,
+    });
+
+    this.emit("mesh:conflict", conflictInfo);
+
+    try {
+      const resolution = await resolveWithTimeout(
+        item.agentName,
+        conflictInfo,
+        item.onConflict,
+        this.opts.conflictTimeout
+      );
+
+      if (signal.aborted) return;
+
+      if (resolution.resolved) {
+        // Agent 声称已解决冲突，继续 rebase
+        this.emit("mesh:retry", item.agentName, entry.retryState.attempt);
+
+        const continueResult = await continueRebase(item.worktreePath);
+
+        if (signal.aborted) return;
+
+        if (continueResult.success) {
+          // Rebase 成功
+          await this.processMerge(entry);
+        } else {
+          // 继续 rebase 又遇到新冲突
+          await this.processConflict(entry, continueResult.files);
+        }
+      } else {
+        // Agent 放弃解决
+        await this.handleFailure(
+          entry,
+          resolution.reason ?? "Agent abandoned conflict resolution"
+        );
+      }
+    } catch (err) {
+      if (signal.aborted) return;
+
+      if (err instanceof AgentTimeoutError) {
+        await this.handleFailure(
+          entry,
+          `Conflict resolution timed out after ${this.opts.conflictTimeout}ms`
+        );
+      } else if (err instanceof AgentAbandonError) {
+        await this.handleFailure(entry, err.message);
+      } else if (err instanceof AgentResolveError) {
+        await this.handleFailure(entry, err.message);
+      } else {
+        // 未知错误，中止 rebase 并重试
+        try {
+          await abortRebase(item.worktreePath);
+        } catch {
+          // ignore
+        }
+
+        if (canRetry(entry.retryState)) {
+          entry.state = "rebasing";
+          entry.trunkHeadAtStart = this.trunkHead;
+          await this.processRebase(entry);
+        } else {
+          await this.handleFailure(
+            entry,
+            `Rebase retries exhausted: ${err instanceof Error ? err.message : String(err)}`
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * 处理合并：获取锁 → 检查 trunk 变化 → merge → 释放锁
+   */
+  private async processMerge(entry: AgentEntry): Promise<void> {
+    const { item, abortController } = entry;
+
+    try {
+      // 等待合并锁
+      await this.mergeLock.acquire();
+
+      if (abortController.signal.aborted) {
+        this.mergeLock.release();
+        return;
+      }
+
+      // 检查 trunk 是否在 rebase 期间被更新
+      const currentTrunkHead = await getTrunkHead(
+        this.opts.cwd,
+        this.opts.trunkBranch
+      );
+
+      if (currentTrunkHead !== entry.trunkHeadAtStart) {
+        // trunk 已变化，需要重新 rebase
+        this.mergeLock.release();
+
+        // 检查当前是否还在 rebase 状态
+        entry.state = "rebasing";
+        entry.trunkHeadAtStart = currentTrunkHead;
+
+        // 通知其他 rebasing 的 agent 重启（通过 processQueue 自然处理）
+        await this.processRebase(entry);
+        return;
+      }
+
+      // 合并！
+      const newHead = await fastForwardMerge(
+        item.branch,
+        this.opts.trunkBranch,
+        this.opts.cwd
+      );
+
+      // 更新全局 trunk HEAD
+      this.trunkHead = newHead;
+
+      // 释放锁
+      this.mergeLock.release();
+
+      // 标记完成
+      entry.state = "merged";
+      entry.result = {
+        agentName: item.agentName,
+        status: "merged",
+        mergeCommit: newHead,
+        cleaned: false,
+      };
+
+      this.emit("mesh:merged", item.agentName, newHead);
+
+      // trunk 更新后，重启所有正在 rebase 的其他 agent
+      await this.restartInProgressRebases();
+    } catch (err) {
+      this.mergeLock.release();
+      await this.handleFailure(
+        entry,
+        `Merge error: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
+  /**
+   * 重启所有正在 rebase 的其他 Agent
+   */
+  private async restartInProgressRebases(): Promise<void> {
+    const rebasing = this.queue.filter(
+      (e) => e.state === "rebasing" && e.item.agentName !== this.getLastMergedName()
+    );
+
+    for (const entry of rebasing) {
+      // 中止当前 rebase
+      try {
+        if (await isRebasing(entry.item.worktreePath)) {
+          await abortRebase(entry.item.worktreePath);
+        }
+      } catch {
+        // 可能不在 rebase 中，忽略
+      }
+
+      // 重新排队
+      entry.trunkHeadAtStart = this.trunkHead;
+
+      // 异步重启 rebase
+      this.processRebase(entry);
+    }
+  }
+
+  private getLastMergedName(): string {
+    const merged = this.queue.find((e) => e.state === "merged");
+    // 更准确的是找最近 merged 的
+    for (let i = this.queue.length - 1; i >= 0; i--) {
+      if (this.queue[i].state === "merged") {
+        return this.queue[i].item.agentName;
+      }
+    }
+    return "";
+  }
+
+  /**
+   * 标记 Agent 为失败
+   */
+  private async handleFailure(
+    entry: AgentEntry,
+    reason: string
+  ): Promise<void> {
+    // 先中止可能的 rebase 状态
+    try {
+      if (await isRebasing(entry.item.worktreePath)) {
+        await abortRebase(entry.item.worktreePath);
+      }
+    } catch {
+      // ignore
+    }
+
+    entry.state = "failed";
+    entry.result = {
+      agentName: entry.item.agentName,
+      status: "failed",
+      reason,
+      cleaned: false,
+    };
+
+    this.emit("mesh:failed", entry.item.agentName, reason);
+    this.checkAllDone();
+  }
+
+  /**
+   * 检查是否所有 agent 都已处理完毕
+   */
+  private checkAllDone(): void {
+    const pending = this.queue.filter(
+      (e) =>
+        e.state === "queued" ||
+        e.state === "rebasing" ||
+        e.state === "conflict" ||
+        e.state === "waiting_for_lock"
+    );
+
+    if (pending.length === 0 && this.resolveDone) {
+      const results = this.queue
+        .filter((e) => e.result)
+        .map((e) => e.result!);
+
+      // 确保所有 agent 都有结果
+      const allResults: AgentResult[] = [];
+      for (const entry of this.queue) {
+        allResults.push(
+          entry.result ?? {
+            agentName: entry.item.agentName,
+            status: "failed",
+            reason: "Unknown error",
+            cleaned: false,
+          }
+        );
+      }
+
+      this.resolveDone(allResults);
+      this.resolveDone = null;
+    }
+  }
+
+  /**
+   * 清理成功的 Agent 的 worktree
+   */
+  async cleanupSuccessful(): Promise<void> {
+    for (const entry of this.queue) {
+      if (entry.state === "merged" && entry.result) {
+        try {
+          await removeWorktree(entry.item.agentName, {
+            cwd: this.opts.cwd,
+            workspaceDir: this.opts.workspaceDir,
+            branchPrefix: this.opts.branchPrefix,
+          });
+          entry.result.cleaned = true;
+        } catch {
+          // 清理失败不影响流程
+        }
+      }
+    }
+  }
+}
