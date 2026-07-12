@@ -344,6 +344,9 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
 
       // trunk 更新后，重启所有正在 rebase 的其他 agent
       await this.restartInProgressRebases();
+
+      // 检查是否所有 agent 都已完成
+      this.checkAllDone();
     } catch (err) {
       this.mergeLock.release();
       await this.handleFailure(
@@ -354,7 +357,9 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
   }
 
   /**
-   * 重启所有正在 rebase 的其他 Agent
+   * 重启所有正在 rebase 的其他 Agent。
+   * 只重启真正在 git rebase 中的 agent，
+   * 已完成 rebase 正在等锁的 agent 由 processMerge 中的 trunk 检查处理。
    */
   private async restartInProgressRebases(): Promise<void> {
     const rebasing = this.queue.filter(
@@ -362,20 +367,19 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
     );
 
     for (const entry of rebasing) {
-      // 中止当前 rebase
+      // 只重启真正在 rebase 中的 agent
       try {
         if (await isRebasing(entry.item.worktreePath)) {
           await abortRebase(entry.item.worktreePath);
+          // 更新目标并重启
+          entry.trunkHeadAtStart = this.trunkHead;
+          this.processRebase(entry);
         }
+        // 如果不在 rebase 中（已完成，正在等锁），
+        // processMerge 中的 trunk 检查会处理重启
       } catch {
-        // 可能不在 rebase 中，忽略
+        // 忽略错误
       }
-
-      // 重新排队
-      entry.trunkHeadAtStart = this.trunkHead;
-
-      // 异步重启 rebase
-      this.processRebase(entry);
     }
   }
 

@@ -125,6 +125,9 @@ export async function listWorktrees(opts: WorktreeOptions): Promise<WorktreeInfo
       cwd: opts.cwd,
     });
 
+    // Resolve symlinks for path comparison (macOS /var → /private/var)
+    const normalizedWorkspaceDir = fs.realpathSync(opts.workspaceDir);
+
     const worktrees: WorktreeInfo[] = [];
     const lines = output.split("\n");
     let current: Partial<WorktreeInfo> = {};
@@ -132,8 +135,8 @@ export async function listWorktrees(opts: WorktreeOptions): Promise<WorktreeInfo
     for (const line of lines) {
       if (line.startsWith("worktree ")) {
         if (current.path) {
-          // Only include worktrees in our workspace dir
-          if (current.path.startsWith(opts.workspaceDir)) {
+          const normalizedPath = fs.realpathSync(current.path);
+          if (normalizedPath.startsWith(normalizedWorkspaceDir)) {
             worktrees.push({
               name: path.basename(current.path),
               path: current.path,
@@ -151,13 +154,16 @@ export async function listWorktrees(opts: WorktreeOptions): Promise<WorktreeInfo
     }
 
     // Don't forget the last entry
-    if (current.path && current.path.startsWith(opts.workspaceDir)) {
-      worktrees.push({
-        name: path.basename(current.path),
-        path: current.path,
-        branch: current.branch ?? "detached",
-        head: current.head ?? "",
-      });
+    if (current.path) {
+      const normalizedPath = fs.realpathSync(current.path);
+      if (normalizedPath.startsWith(normalizedWorkspaceDir)) {
+        worktrees.push({
+          name: path.basename(current.path),
+          path: current.path,
+          branch: current.branch ?? "detached",
+          head: current.head ?? "",
+        });
+      }
     }
 
     return worktrees;
