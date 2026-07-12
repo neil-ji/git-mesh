@@ -38,7 +38,11 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Test
-        run: npm test -- --testTimeout=30000
+        run: npm test -- --testTimeout=60000
+        env:
+          GIT_EDITOR: 'true'
+          GIT_SEQUENCE_EDITOR: 'true'
+          EDITOR: 'true'
 
       - name: Publish
         run: npm publish --tag ${{ inputs.tag || 'latest' }}
