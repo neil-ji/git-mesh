@@ -1,11 +1,10 @@
 /**
  * git worktree CRUD（内部使用，不暴露为公开 API）。
  *
- * 对标 treefork 的核心能力，但仅供 session 内部调用。
+ * 仅供 session 内部调用。
  * - 无 checkpoint 机制
  * - 无 remote 模式
  * - 无 config 文件
- * - 无 tmux 集成
  */
 
 import * as path from "path";

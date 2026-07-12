@@ -81,14 +81,22 @@ export async function validateGitEnv(cwd: string): Promise<void> {
 
   // 检查是否在 worktree 内（不能在 worktree 内启动 gitmesh）
   try {
+    // 用 git rev-parse --git-dir 获取实际的 .git 路径
     const gitDir = await execGit(["rev-parse", "--git-dir"], { cwd });
-    // 如果 .git 是文件而不是目录，说明当前在 worktree 中
     const gitDirPath = path.resolve(cwd, gitDir);
-    const stat = fs.statSync(gitDirPath);
-    if (stat.isFile()) {
-      throw new SessionError(
-        "Cannot run gitmesh inside a git worktree. Run it from the main repository."
-      );
+    // 如果解析后的路径不是以 cwd/.git 开头，说明在 worktree 中
+    // 或者 .git 是一个文件（worktree 的 .git 是文件，指向主仓库）
+    const dotGitPath = path.join(cwd, ".git");
+    try {
+      const dotGitStat = fs.statSync(dotGitPath);
+      if (dotGitStat.isFile()) {
+        throw new SessionError(
+          "Cannot run gitmesh inside a git worktree. Run it from the main repository."
+        );
+      }
+    } catch (err) {
+      if (err instanceof SessionError) throw err;
+      // .git doesn't exist at all — unexpected but let it pass to version check
     }
   } catch (err) {
     if (err instanceof SessionError) throw err;

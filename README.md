@@ -134,17 +134,6 @@ Agent 完成后立即 rebase 到当前主干 HEAD。rebase 成功则合并，冲
 
 严格按 Agent 定义顺序逐个合并，前一个完成后下一个才开始。
 
-## 与 treefork 的关系
-
-| treefork | gitmesh |
-|----------|---------|
-| worktree CRUD | 合并编排 |
-| checkpoint | 冲突路由 |
-| config 管理 | Agent 协议 |
-| CLI + tmux | Session 生命周期 + 事件系统 |
-
-两者互补，不重复。
-
 ## License
 
 MIT
