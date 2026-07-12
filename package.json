@@ -22,9 +22,13 @@
   ],
   "license": "MIT",
   "author": "neil-ji",
+  "homepage": "https://neil-ji.github.io/git-mesh/",
+  "bugs": {
+    "url": "https://github.com/neil-ji/git-mesh/issues"
+  },
   "repository": {
     "type": "git",
-    "url": "git@github.com:neil-ji/git-mesh.git"
+    "url": "git+https://github.com/neil-ji/git-mesh.git"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
