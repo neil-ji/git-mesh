@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gitmesh SDK 文档</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<meta name="description" content="gitmesh SDK 文档 — 多 Agent 并行编码 git 冲突解决方案的完整 API 参考和使用指南">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:opsz,wght@14..32,400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link rel="stylesheet" href="sdk.css">
+</head>
+<body>
+
+<!-- TOPBAR -->
+<header class="topbar">
+  <button class="menu-btn" id="menuBtn" aria-label="Toggle menu">
+    <i data-lucide="menu" style="width:18px;height:18px"></i>
+  </button>
+  <a href="index.html" class="topbar-back">
+    <i data-lucide="arrow-left" style="width:15px;height:15px"></i>
+    <span>首页</span>
+  </a>
+  <a href="index.html" class="topbar-logo">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="#06b6d4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    gitmesh
+  </a>
+  <span class="topbar-badge">SDK v0.1</span>
+  <button class="theme-btn" id="themeBtn" aria-label="Toggle theme" title="切换主题">
+    <i data-lucide="sun" style="width:15px;height:15px"></i>
+  </button>
+  <a href="https://github.com/neil-ji/git-mesh" class="topbar-gh" target="_blank" rel="noopener">
+    <i data-lucide="github" style="width:14px;height:14px"></i>
+    GitHub
+  </a>
+</header>
+
+<!-- OVERLAY -->
+<div class="overlay" id="overlay"></div>
+
+<div class="docs-layout">
+
+<!-- SIDEBAR -->
+<aside class="sidebar" id="sidebar">
+  <div class="sidebar-section"><div class="sidebar-section-title">开始</div></div>
+  <nav class="sidebar-nav">
+    <a class="sidebar-link active" data-doc="overview"><i data-lucide="book-open" class="icon"></i>概述</a>
+    <a class="sidebar-link" data-doc="getting-started"><i data-lucide="rocket" class="icon"></i>快速开始</a>
+    <a class="sidebar-link" data-doc="feature-checklist"><i data-lucide="clipboard-check" class="icon"></i>功能预览</a>
+  </nav>
+  <div class="sidebar-section"><div class="sidebar-section-title">核心概念</div></div>
+  <nav class="sidebar-nav">
+    <a class="sidebar-link" data-doc="core-concepts"><i data-lucide="lightbulb" class="icon"></i>核心概念</a>
+    <a class="sidebar-link" data-doc="agent-protocol"><i data-lucide="cable" class="icon"></i>Agent 协议</a>
+    <a class="sidebar-link" data-doc="merge-strategies"><i data-lucide="shuffle" class="icon"></i>合并策略</a>
+    <a class="sidebar-link" data-doc="conflict-resolution"><i data-lucide="zap" class="icon"></i>冲突解决</a>
+  </nav>
+  <div class="sidebar-section"><div class="sidebar-section-title">参考</div></div>
+  <nav class="sidebar-nav">
+    <a class="sidebar-link" data-doc="api-reference"><i data-lucide="file-code" class="icon"></i>API 参考</a>
+    <a class="sidebar-link" data-doc="events"><i data-lucide="radio" class="icon"></i>事件系统</a>
+    <a class="sidebar-link" data-doc="error-handling"><i data-lucide="alert-triangle" class="icon"></i>错误处理</a>
+    <a class="sidebar-link" data-doc="advanced-usage"><i data-lucide="wrench" class="icon"></i>高级用法</a>
+  </nav>
+  <div class="sidebar-footer">
+    <a href="index.html"><i data-lucide="arrow-left" style="width:14px;height:14px"></i>返回首页</a>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<main class="main" id="main">
+  <div id="contentArea">
+    <div class="loading"><div class="spinner"></div>加载文档...</div>
+  </div>
+</main>
+
+</div>
+
+<script src="sdk.js"></script>
+</body>
+</html>

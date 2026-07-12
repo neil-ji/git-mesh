@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>gitmesh — 多 Agent 并行编码 git 冲突解决方案</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<meta name="description" content="多 Agent 并行编码 git 冲突解决方案 — 在单仓库内为多个 AI Agent 创建隔离工作区，自动合并代码，智能路由冲突。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<link rel="stylesheet" href="landing.css">
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav" id="nav">
+  <div class="container">
+    <a href="#" class="nav-logo">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="width:28px;height:28px">
+        <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="#06b6d4" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <text x="12" y="9.5" text-anchor="middle" font-family="'Space Grotesk',sans-serif" font-size="4.2" font-weight="700" fill="#06b6d4" letter-spacing="0.04em">git</text>
+        <text x="12" y="15.5" text-anchor="middle" font-family="'Space Grotesk',sans-serif" font-size="4.2" font-weight="700" fill="#06b6d4" letter-spacing="0.04em">mesh</text>
+      </svg>
+      gitmesh
+    </a>
+    <div class="nav-links">
+      <a href="#problem" class="nav-link">痛点</a>
+      <a href="#flow" class="nav-link">工作流程</a>
+      <a href="#features" class="nav-link">特性</a>
+      <a href="#demo" class="nav-link">示例</a>
+      <a href="sdk.html" class="nav-link">文档</a>
+      <a href="https://github.com/neil-ji/git-mesh" class="nav-star" target="_blank" rel="noopener" id="navStar">
+        <i data-lucide="star" style="width:14px;height:14px"></i>
+        <span class="star-count" id="navStarCount">★</span>
+      </a>
+      <a href="https://github.com/neil-ji/git-mesh" class="nav-gh" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-content">
+    <div class="hero-badge">
+      <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>
+      MIT License · Open Source
+    </div>
+    <h1>多 Agent 并行编码<br><em>Git 冲突解决方案</em></h1>
+    <p class="hero-subtitle">为多个 AI Agent 创建隔离工作区，自动合并代码，智能路由冲突。</p>
+    <div class="hero-actions">
+      <button class="btn-primary" onclick="copyInstall()">
+        <i data-lucide="clipboard-copy" style="width:18px;height:18px"></i>
+        npm install gitmesh
+      </button>
+      <a href="https://github.com/neil-ji/git-mesh" class="btn-star" target="_blank" rel="noopener" id="heroStar">
+        <i data-lucide="star" style="width:18px;height:18px"></i>
+        Star <span class="star-count" id="heroStarCount">—</span>
+      </a>
+      <a href="https://github.com/neil-ji/git-mesh" class="btn-secondary" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+
+    <!-- Hero git graph: phased narrative animation -->
+    <div class="hero-graph">
+      <svg viewBox="0 0 660 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <!-- Trunk -->
+        <path d="M20 170h620" stroke="rgba(255,255,255,0.15)" stroke-width="2" stroke-linecap="round" class="anim-trunk"/>
+
+        <!-- Branch A (cyan) -->
+        <path d="M140 170c20 0 30-60 60-60h160c30 0 40 60 60 60" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" fill="none" class="anim-branch-1"/>
+        <!-- Branch B (indigo) -->
+        <path d="M220 170c20 0 25-38 55-38h120c30 0 35 38 55 38" stroke="#6366f1" stroke-width="2" stroke-linecap="round" fill="none" class="anim-branch-2"/>
+        <!-- Branch C (violet) -->
+        <path d="M300 170c20 0 25-90 55-90h160c30 0 35 90 55 90" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" fill="none" class="anim-branch-3"/>
+
+        <!-- Branch commit nodes (appear in sequence) -->
+        <circle cx="200" cy="110" r="4" fill="#0a1424" stroke="#06b6d4" stroke-width="2" class="anim-node anim-node-1"/>
+        <circle cx="300" cy="110" r="4" fill="#0a1424" stroke="#06b6d4" stroke-width="2" class="anim-node anim-node-2"/>
+        <circle cx="360" cy="110" r="4" fill="#0a1424" stroke="#06b6d4" stroke-width="2" class="anim-node anim-node-3"/>
+
+        <circle cx="280" cy="132" r="4" fill="#0a1424" stroke="#6366f1" stroke-width="2" class="anim-node anim-node-4"/>
+        <circle cx="360" cy="132" r="4" fill="#0a1424" stroke="#6366f1" stroke-width="2" class="anim-node anim-node-5"/>
+
+        <circle cx="360" cy="80" r="4" fill="#0a1424" stroke="#a78bfa" stroke-width="2" class="anim-node anim-node-6"/>
+        <circle cx="440" cy="80" r="4" fill="#0a1424" stroke="#a78bfa" stroke-width="2" class="anim-node anim-node-7"/>
+        <circle cx="520" cy="80" r="4" fill="#0a1424" stroke="#a78bfa" stroke-width="2" class="anim-node anim-node-8"/>
+
+        <!-- Merge points (glow animation) -->
+        <circle cx="420" cy="170" r="3.5" fill="#10b981" class="anim-merge anim-merge-1"/>
+        <circle cx="450" cy="170" r="3.5" fill="#10b981" class="anim-merge anim-merge-2"/>
+        <circle cx="575" cy="170" r="3.5" fill="#10b981" class="anim-merge anim-merge-3"/>
+
+        <!-- Trunk commit dots -->
+        <circle cx="80" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="140" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="220" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="300" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="500" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+        <circle cx="640" cy="170" r="2.5" fill="rgba(255,255,255,0.2)"/>
+
+        <!-- Labels (fade in) -->
+        <text x="305" y="98" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="#06b6d4" class="anim-label anim-label-1">agent A · fix-auth</text>
+        <text x="340" y="150" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="#6366f1" class="anim-label anim-label-2">agent B · refactor</text>
+        <text x="460" y="66" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="#a78bfa" class="anim-label anim-label-3">agent C · add-api</text>
+        <text x="170" y="195" text-anchor="middle" font-family="Inter,sans-serif" font-size="11" fill="rgba(255,255,255,0.2)" class="anim-label anim-label-4">trunk</text>
+        <text x="432" y="155" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#10b981" class="anim-label anim-label-5">merged</text>
+        <text x="587" y="155" text-anchor="middle" font-family="Inter,sans-serif" font-size="10" fill="#10b981" class="anim-label anim-label-6">merged</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- PAIN POINTS -->
+<section class="section" id="problem">
+  <div class="container">
+    <div class="section-label">The Problem</div>
+    <h2 class="section-title">没有 gitmesh 时，<br>多 Agent 协作一团乱</h2>
+    <p class="section-desc">多个 Agent 同时改一个仓库，三个最常见的麻烦。</p>
+    <div class="pain-grid">
+      <div class="pain-card">
+        <div class="pain-icon warn">
+          <i data-lucide="alert-triangle" style="width:20px;height:20px"></i>
+        </div>
+        <h3>工作区相互覆盖</h3>
+        <p>共享目录里并行编码，文件互相踩踏，git 操作互相打断。</p>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon cycle">
+          <i data-lucide="refresh-cw" style="width:20px;height:20px"></i>
+        </div>
+        <h3>合并顺序混乱</h3>
+        <p>完成时间不可预测，先合的可能冲突后合的。手动协调费时易错。</p>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon error">
+          <i data-lucide="x-circle" style="width:20px;height:20px"></i>
+        </div>
+        <h3>冲突无人解决</h3>
+        <p>改同一文件产生冲突，上下文不全难定位，一个失败阻塞全流程。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GITMESH FLOW ANIMATION -->
+<section class="flow-section" id="flow">
+  <div class="container section" style="padding:100px 0">
+    <div class="section-label">How It Works</div>
+    <h2 class="section-title">多 Agent 协作，<br>gitmesh 全自动编排</h2>
+    <p class="section-desc">编排服务持有主仓库，为每个 Agent 创建独立 worktree，全程自动编排。</p>
+
+    <div class="flow-scene" id="flowScene">
+      <!-- SVG connecting lines -->
+      <svg class="flow-lines" id="flowLines" preserveAspectRatio="none">
+        <path id="lineShared" d="" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-dasharray="6 4" opacity="0"/>
+        <path id="lineA" d="" stroke="#06b6d4" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" opacity="0"/>
+        <path id="lineB" d="" stroke="#6366f1" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" opacity="0"/>
+        <path id="lineC" d="" stroke="#a78bfa" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 4" opacity="0"/>
+        <circle id="dotOrigin" cx="0" cy="0" r="6" fill="#0b1222" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" opacity="0"/>
+        <circle id="dotA" cx="0" cy="0" r="3.5" fill="#06b6d4" opacity="0"/>
+        <circle id="dotB" cx="0" cy="0" r="3.5" fill="#6366f1" opacity="0"/>
+        <circle id="dotC" cx="0" cy="0" r="3.5" fill="#a78bfa" opacity="0"/>
+      </svg>
+
+      <!-- Orchestrator -->
+      <div class="orc-panel" id="orcPanel" style="position:relative">
+        <div class="orc-header">
+          <span class="orc-header-dot r"></span><span class="orc-header-dot y"></span><span class="orc-header-dot g"></span>
+          <span class="orc-header-title">gitmesh orchestrator</span>
+        </div>
+        <div class="orc-body">
+          <div class="orc-repo">
+            <i data-lucide="git-branch" style="width:12px;height:12px;opacity:0.4"></i>
+            repo: <span style="color:rgba(255,255,255,0.4)">main</span>
+          </div>
+          <div class="orc-head">
+            <span class="orc-head-label">HEAD</span>
+            <span class="orc-head-hash" id="orcHeadHash">a1b2c3d</span>
+          </div>
+          <div class="orc-log" id="orcLog"></div>
+          <div class="orc-merge-badge" id="orcMergeBadge">
+            <i data-lucide="check" style="width:12px;height:12px"></i>
+            merge engine active
+          </div>
+          <div class="orc-done-check" id="orcDoneCheck">
+            <i data-lucide="check-circle" style="width:28px;height:28px;color:#10b981"></i>
+          </div>
+        </div>
+        <!-- Conflict popup -->
+        <div class="orc-conflict-popup" id="conflictPopup">
+          <div class="title">conflict detected</div>
+          <div class="file">src/auth.ts · 2 处冲突</div>
+          <div class="arrow">→ routing to Agent B</div>
+        </div>
+      </div>
+
+      <!-- Agent panels -->
+      <div class="agent-col" id="agentCol">
+        <div class="agent-panel" id="agentA" style="opacity:0.3">
+          <div class="agent-panel-header">
+            <span class="agent-panel-name"><span class="dot a"></span>Agent A · fix-auth</span>
+            <span class="agent-panel-wt">~/mesh/fix-auth</span>
+          </div>
+          <div class="agent-panel-body" id="agentABody"></div>
+          <div class="agent-panel-status" id="agentAStatus"><span class="status-icon"></span>idle</div>
+        </div>
+        <div class="agent-panel" id="agentB" style="opacity:0.3">
+          <div class="agent-panel-header">
+            <span class="agent-panel-name"><span class="dot b"></span>Agent B · refactor-db</span>
+            <span class="agent-panel-wt">~/mesh/refactor-db</span>
+          </div>
+          <div class="agent-panel-body" id="agentBBody"></div>
+          <div class="agent-panel-status" id="agentBStatus"><span class="status-icon"></span>idle</div>
+        </div>
+        <div class="agent-panel" id="agentC" style="opacity:0.3">
+          <div class="agent-panel-header">
+            <span class="agent-panel-name"><span class="dot c"></span>Agent C · add-tests</span>
+            <span class="agent-panel-wt">~/mesh/add-tests</span>
+          </div>
+          <div class="agent-panel-body" id="agentCBody"></div>
+          <div class="agent-panel-status" id="agentCStatus"><span class="status-icon"></span>idle</div>
+        </div>
+      </div>
+    </div>
+    <!-- Narration -->
+    <div class="flow-narration" id="flowNarration">
+      <span id="narrationText"></span>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="container">
+    <div class="section-label">Features</div>
+    <h2 class="section-title">为多 Agent 协作<br>从头设计的 Git 编排层</h2>
+    <p class="section-desc">不是 CI，不是 Agent 框架 — 只管多 Agent 的 git 操作。</p>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="fc-icon c1">
+          <i data-lucide="layout-grid" style="width:18px;height:18px"></i>
+        </div>
+        <h4>多 Worktree 隔离</h4>
+        <p>独立工作目录和分支，并行编码互不影响。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c2">
+          <i data-lucide="git-branch" style="width:18px;height:18px"></i>
+        </div>
+        <h4>Rebase-First 合并</h4>
+        <p>线性 git 历史，冲突在 worktree 内解决，不污染主干。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c3">
+          <i data-lucide="check-circle" style="width:18px;height:18px"></i>
+        </div>
+        <h4>智能冲突路由</h4>
+        <p>检测冲突，携带完整上下文路由回对应 Agent 自行解决。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c4">
+          <i data-lucide="rotate-cw" style="width:18px;height:18px"></i>
+        </div>
+        <h4>重试循环</h4>
+        <p>冲突解决后自动重试 rebase，直到成功或超限。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c5">
+          <i data-lucide="shield" style="width:18px;height:18px"></i>
+        </div>
+        <h4>失败隔离</h4>
+        <p>单 Agent 失败不阻塞其他，保留 worktree 供人工介入。</p>
+      </div>
+      <div class="feature-card">
+        <div class="fc-icon c6">
+          <i data-lucide="radio" style="width:18px;height:18px"></i>
+        </div>
+        <h4>事件驱动观测</h4>
+        <p>8 个 typed 事件覆盖全流程，实时观测进度和状态。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CODE DEMO -->
+<section class="code-section" id="demo">
+  <div class="container section" style="padding:100px 0">
+    <div class="section-label">Quick Start</div>
+    <h2 class="section-title">10 行代码，<br>启动多 Agent 协作</h2>
+    <p class="section-desc">Claude SDK / Shell 脚本 / HTTP 回调 — 任意 Agent 实现均可接入。</p>
+    <div class="code-window">
+      <div class="code-window-bar">
+        <span class="code-window-dot r"></span><span class="code-window-dot y"></span><span class="code-window-dot g"></span>
+        <span class="code-window-title">session.ts</span>
+      </div>
+      <pre><code><span class="c-kw">import</span> { gitmesh } <span class="c-kw">from</span> <span class="c-str">"gitmesh"</span>;
+
+<span class="c-kw">const</span> <span class="c-var">session</span> = <span class="c-kw">await</span> <span class="c-fn">gitmesh</span>({
+  <span class="c-var">cwd</span>: <span class="c-str">"/path/to/repo"</span>,
+  <span class="c-var">strategy</span>: <span class="c-str">"rebase-first"</span>,
+  <span class="c-var">agents</span>: [
+    {
+      <span class="c-var">name</span>: <span class="c-str">"fix-auth"</span>,
+      <span class="c-cm">// worktree 就绪，Agent 开始编码</span>
+      <span class="c-fn">onReady</span>: <span class="c-kw">async</span> (<span class="c-var">signal</span>) => {
+        <span class="c-kw">await</span> <span class="c-fn">runAgent</span>({ <span class="c-var">cwd</span>: <span class="c-var">signal</span>.<span class="c-var">worktreePath</span> });
+        <span class="c-var">signal</span>.<span class="c-fn">done</span>();
+      },
+      <span class="c-cm">// 冲突时路由给 Agent 自行解决</span>
+      <span class="c-fn">onConflict</span>: <span class="c-kw">async</span> (<span class="c-var">conflict</span>) => {
+        <span class="c-kw">return</span> <span class="c-fn">runConflictResolver</span>(<span class="c-var">conflict</span>);
+      },
+    },
+  ],
+});
+
+<span class="c-var">session</span>.<span class="c-fn">on</span>(<span class="c-str">"mesh:merged"</span>, (<span class="c-var">name</span>, <span class="c-var">commit</span>) => {
+  <span class="c-var">console</span>.<span class="c-fn">log</span>(<span class="c-str">`merged: </span><span class="c-op">${</span><span class="c-var">name</span><span class="c-op">}</span><span class="c-str">`</span>);
+});
+
+<span class="c-kw">const</span> <span class="c-var">summary</span> = <span class="c-kw">await</span> <span class="c-var">session</span>.<span class="c-fn">done</span>();</code></pre>
+    </div>
+  </div>
+</section>
+
+<!-- BOTTOM CTA -->
+<section class="section cta-section">
+  <div class="container">
+    <h2 class="section-title">准备好让 Agent 们<br>高效协作了？</h2>
+    <p class="section-desc">MIT 开源 · TypeScript · npm install gitmesh</p>
+    <div class="cta-actions">
+      <button class="btn-dark" onclick="copyInstall()">
+        <i data-lucide="clipboard-copy" style="width:18px;height:18px"></i>
+        npm install gitmesh
+      </button>
+      <a href="https://github.com/neil-ji/git-mesh" class="btn-outline" target="_blank" rel="noopener">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+        GitHub
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <span class="footer-text">
+      <svg width="16" height="16" viewBox="0 0 48 48" fill="none"><path d="M24 4L44 14v20L24 44 4 34V14L24 4z" stroke="#94a3b8" stroke-width="2.5" stroke-linejoin="round"/></svg>
+      gitmesh · MIT License
+    </span>
+    <div class="footer-links">
+      <a href="https://github.com/neil-ji/git-mesh">GitHub</a>
+      <a href="https://www.npmjs.com/package/gitmesh">npm</a>
+    </div>
+  </div>
+</footer>
+
+<script src="landing.js"></script>
+</body>
+</html>
