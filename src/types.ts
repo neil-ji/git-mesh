@@ -99,7 +99,12 @@ export interface ConflictFile {
   /** 相对于 repo root 的文件路径 */
   path: string;
   /** 冲突状态 */
-  status: "conflicted" | "deleted-by-us" | "deleted-by-them" | "added-by-both";
+  status:
+    | "conflicted"
+    | "deleted-by-us"
+    | "deleted-by-them"
+    | "deleted-by-both"
+    | "added-by-both";
   /** 冲突内容（含 <<<<<<< ======= >>>>>>> 标记） */
   content: string;
   /** 主干侧改了什么 */
