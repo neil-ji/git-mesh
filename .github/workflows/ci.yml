@@ -39,7 +39,7 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npm test
+        run: npx vitest run
 
   # 验证构建产物可被正确 require / import
   verify-package:

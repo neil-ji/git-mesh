@@ -38,7 +38,7 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Test
-        run: npm test -- --testTimeout=60000
+        run: npx vitest run
         env:
           GIT_EDITOR: 'true'
           GIT_SEQUENCE_EDITOR: 'true'

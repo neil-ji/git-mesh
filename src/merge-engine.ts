@@ -113,8 +113,8 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
     return new Promise<AgentResult[]>((resolve) => {
       this.resolveDone = resolve;
 
-      // 给一点时间让 agents 入队，然后开始处理
-      setImmediate(() => this.processQueue());
+      // 延迟启动，确保所有 agents 已入队
+      setTimeout(() => this.processQueue(), 10);
     });
   }
 
