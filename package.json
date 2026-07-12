@@ -1,6 +1,6 @@
 {
   "name": "gitmesh",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Agent 并行编码时的 git 管道工 — 在单仓库内为多个 Agent 创建隔离 worktree，自动将变更合回主干",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
