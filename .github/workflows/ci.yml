@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Node ${{ matrix.node-version }} on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node-version: ["18", "20", "22"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npm test
+
+  # 验证构建产物可被正确 require / import
+  verify-package:
+    name: Verify package integrity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+      - run: npm run build
+
+      - name: Verify dist entry point exists
+        run: |
+          test -f dist/index.js
+          test -f dist/index.d.ts
+
+      - name: Verify package can be required
+        run: node -e "const m = require('./dist/index'); console.log('exports:', Object.keys(m).slice(0,10).join(', '))"
+
+      - name: Verify no extraneous files in package
+        run: |
+          npm pack --dry-run 2>&1 | tee pack-output.txt
+          grep -q 'index.js' pack-output.txt
+          grep -q 'index.d.ts' pack-output.txt
