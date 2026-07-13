@@ -25,6 +25,7 @@ gitmesh 把这些事情都做了。
 
 - 不是 Agent 框架 — 不实现 AI Agent，不与任何 LLM SDK 耦合
 - 不是分布式系统 — 仅支持本地单仓库
+- 不是 git SDK — 不封装 `git add`、`git commit`、`git config` 等操作。worktree 内的 git 操作由 Agent 自行管理（推荐使用 simple-git 等库）。gitmesh 的唯一职责是**多 Agent 并行变更的合并编排**
 - 不是 git 替代品 — 所有 git 操作由原生 git 命令执行，gitmesh 只做编排
 - 不是 CI/CD 工具 — 不管理 Agent 生命周期，不调度任务
 

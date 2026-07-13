@@ -2,6 +2,8 @@
 
 gitmesh 不实现 Agent — 它只定义 Agent 必须遵守的协议。调用方通过实现两个回调函数将 Agent 接入。
 
+> **gitmesh 不是 git SDK。** 它不封装 `git add`、`git commit`、`git config` 等操作。在 worktree 内部，你需要使用自己的 git 工具（simple-git、Node.js `child_process`、shell 脚本等）来完成编码和提交。gitmesh 只负责一件事：**把多个 Agent 的并行变更安全地合到一起。**
+
 ## 协议概览
 
 gitmesh 和 Agent 之间只有两个通信点：
@@ -90,7 +92,7 @@ onReady: (signal: AgentWorkDoneSignal) => {
 - `signal.done()` **必须被调用**，否则 gitmesh 永远等待这个 Agent，session 永远不会结束
 - `signal.done()` 只能调用一次，重复调用会被忽略
 - `signal.done()` **返回 `Promise<boolean>`**：`true` 表示代码成功合入主干，`false` 表示合并失败
-- Agent 的 commit 需要在 worktree 内完成；gitmesh 不自动 commit
+- Agent 的编码和提交完全由 Agent 自己完成 — gitmesh 不管理 worktree 内的 git 操作（add、commit、config 等）。如需 `user.name` / `user.email` 等 git 配置，请在 `onReady` 中自行设置。推荐使用 simple-git 等库处理 worktree 内的 git 操作
 
 ### 典型接入模式
 

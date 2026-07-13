@@ -13,6 +13,9 @@ npm install gitmesh
 - Node.js ≥ 18
 - Git ≥ 2.30（支持 `git worktree`）
 - 一个已有的 git 仓库
+- **git 用户配置**：Agent 在 worktree 内 commit 需要 `user.name` 和 `user.email`。确保 CI 环境或全局 git config 已设置，或在 `onReady` 中初始化：`git config user.name "agent-xxx"`（gitmesh 不管理 worktree 内的 git 配置 — 这是 Agent 的职责）
+
+> **gitmesh 的角色**：gitmesh 不是 git SDK — 它不封装 git 操作。它是**多 Agent 并行变更的合并编排工具**。worktree 内的编码和 git 操作由 Agent 自行管理（推荐使用 [simple-git](https://github.com/steveukx/git-js) 等库）。gitmesh 只管一件事：把多个 Agent 的变更安全地合到一起。
 
 ## 第一个 Session
 

@@ -99,6 +99,8 @@ const summary = await session.done();
 - **[Agent 协议](https://neil-ji.github.io/git-mesh/sdk.html#agent-protocol)** — 两个信号：`onReady`（fire-and-forget，`signal.done()` 为生命周期锚点） + `onConflict`（解决冲突），协议无关实现
 - **[Rebase-First 合并](https://neil-ji.github.io/git-mesh/sdk.html#merge-strategies)** — 线性 git 历史，冲突在 worktree 内解决，不污染主干
 - **[冲突路由](https://neil-ji.github.io/git-mesh/sdk.html#conflict-resolution)** — 检测 → 通知 Agent → 解决 → 重试，循环直到成功或超限
+
+> **gitmesh 不是 git SDK。** 它不封装 `git add`、`git commit`、`git config` 等操作。worktree 内的编码和 git 操作由 Agent 自行管理（推荐使用 [simple-git](https://github.com/steveukx/git-js) 等库）。gitmesh 只做一件事：**把并行变更安全地合到一起。**
 - **[事件系统](https://neil-ji.github.io/git-mesh/sdk.html#events)** — 8 个 typed 事件覆盖从 worktree 创建到合并完成的全流程；也可通过构造函数 `onMerged` / `onFailed` / `onConflict` / `onDone` 回调监听，免去事件注册的时序问题
 
 ## API 概览
