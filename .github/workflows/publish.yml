@@ -38,11 +38,27 @@ jobs:
         run: npx tsc --noEmit
 
       - name: Test
-        run: npx vitest run
+        id: test
+        run: |
+          npx vitest run --reporter=verbose > test-output.txt 2>&1
+          echo "EXIT_CODE=$?" >> $GITHUB_OUTPUT
         env:
           GIT_EDITOR: 'true'
           GIT_SEQUENCE_EDITOR: 'true'
           EDITOR: 'true'
+
+      - name: Upload test output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-output
+          path: test-output.txt
+
+      - name: Fail if tests failed
+        if: steps.test.outputs.EXIT_CODE != '0'
+        run: |
+          cat test-output.txt
+          exit 1
 
       - name: Publish
         run: npm publish --tag ${{ inputs.tag || 'latest' }}
