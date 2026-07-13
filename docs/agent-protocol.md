@@ -86,6 +86,7 @@ onReady: (signal: AgentWorkDoneSignal) => {
 **重要规则**：
 
 - **`onReady` 是 fire-and-forget**：gitmesh 调用 `onReady` 后立即返回，不等待回调返回或 resolve。Agent 的生命周期完全由 `signal.done()` 控制
+- **异常安全**：如果 `onReady` 抛出异常（同步或异步），gitmesh 会自动触发 `mesh:failed` 事件，Session 不会因此挂起。无需在 `onReady` 中自行 try/catch
 - `signal.done()` **必须被调用**，否则 gitmesh 永远等待这个 Agent，session 永远不会结束
 - `signal.done()` 只能调用一次，重复调用会被忽略
 - `signal.done()` **返回 `Promise<boolean>`**：`true` 表示代码成功合入主干，`false` 表示合并失败

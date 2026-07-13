@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.15] - 2026-07-13
+
+_生命周期可靠性修复。_
+
+- fix: `engine.abort()` 直接 resolve done promise，防止 `Session.done()` 在 abort 后永久挂起
+- fix: `engine.start()` 增加三次 `isAborted` 检查（启动前、getTrunkHead 后、Promise 构造函数内），防止 abort 后重入
+- fix: `onReady` 抛出异常时自动触发 `mesh:failed` 并通知引擎，防止 session 挂起
+- feat: `MergeEngine.markFailed()` 方法，支持直接将 Agent 标记为失败（无需经过 rebase/merge）
+- feat: `SessionImpl.abort()` 设置 `finished = true`，确保 `done()` 和 `abort()` 互斥
+- docs: 补充 `workspaceDir` 路径规则、`abort()`/`done()` 互斥行为、`onReady` 异常处理说明
+- test: 新增 3 个 abort/done 生命周期测试用例（共 103 个测试）
+
 ## [0.1.14] - 2026-07-13
 
 _CI/CD 结构优化。_

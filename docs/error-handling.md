@@ -232,14 +232,19 @@ for (const r of summary.results) {
 
 ### 中断处理
 
+`abort()` 和 `done()` 互斥：调用一个后，另一个会立即返回缓存结果。可以在 `done()` 等待期间安全地调用 `abort()`。
+
 ```typescript
 // 监听 SIGINT
 process.on("SIGINT", async () => {
   console.log("\n正在清理...");
   await session.abort("用户中断");
+  // done() 会正常返回（不挂起），无需手动 process.exit
   process.exit(1);
 });
 ```
+
+**中止后的 worktree 清理**：`abort()` 会清理所有 worktree（包括已成功合并的）。`done()` 正常完成时只清理成功合并的 Agent worktree，失败的 worktree 保留以供调试。
 
 ## 错误恢复
 

@@ -166,11 +166,123 @@ describe("Session Edge Cases", () => {
   });
 
   it("should throw SessionError when no agents provided", async () => {
-    await expect(
-      gitmesh({
-        cwd: repo.cwd,
-        agents: [],
-      } as any)
-    ).rejects.toThrow(SessionError);
+      await expect(
+        gitmesh({
+          cwd: repo.cwd,
+          agents: [],
+        } as any)
+      ).rejects.toThrow(SessionError);
+    });
+
+    it(
+      "should resolve done() after abort() without hanging",
+      async () => {
+        // Scenario: abort() is called while done() is awaiting.
+        // done() must resolve (not hang) after abort cleans up.
+        const session = await gitmesh({
+          cwd: repo.cwd,
+          workspaceDir,
+          agents: [
+            {
+              name: "slow-agent",
+              onReady: async (_signal: AgentWorkDoneSignal) => {
+                // Agent never calls done() — simulates long-running agent
+              },
+              onConflict: async (): Promise<ResolutionResult> => ({
+                resolved: false,
+              }),
+            },
+          ],
+          maxRetries: 1,
+        });
+
+        // Start done() in background (it will block since agent never calls done())
+        const donePromise = session.done();
+
+        // Small delay to let engine start processing
+        await new Promise((r) => setTimeout(r, 50));
+
+        // Abort should resolve everything
+        await session.abort("test abort");
+
+        // done() must resolve, not hang
+        const summary = await donePromise;
+        expect(summary.status).toBeDefined();
+        expect(summary.results.length).toBeGreaterThanOrEqual(0);
+      },
+      15000
+    );
+
+    it(
+      "should handle abort() called before done() gracefully",
+      async () => {
+        // Scenario: abort() then done() — done() returns cached/terminal result
+        const session = await gitmesh({
+          cwd: repo.cwd,
+          workspaceDir,
+          agents: [
+            {
+              name: "early-abort",
+              onReady: async (_signal: AgentWorkDoneSignal) => {
+                // Don't call done — we'll abort first
+              },
+              onConflict: async (): Promise<ResolutionResult> => ({
+                resolved: false,
+              }),
+            },
+          ],
+          maxRetries: 1,
+        });
+
+        // Abort first
+        await session.abort("early");
+
+        // done() after abort should return without hanging
+        const summary = await session.done();
+        expect(summary.status).toBeDefined();
+      },
+      15000
+    );
+
+    it(
+      "should not hang when onReady throws synchronously",
+      async () => {
+        // Scenario: onReady throws → mesh:failed emitted → session completes normally
+        const failedEvents: string[] = [];
+        let sessionDone = false;
+
+        const session = await gitmesh({
+          cwd: repo.cwd,
+          workspaceDir,
+          agents: [
+            {
+              name: "thrower",
+              onReady: (_signal: AgentWorkDoneSignal) => {
+                throw new Error("agent crashed on startup");
+              },
+              onConflict: async (): Promise<ResolutionResult> => ({
+                resolved: false,
+              }),
+            },
+          ],
+          onFailed: (name: string) => {
+            failedEvents.push(name);
+          },
+          onDone: () => {
+            sessionDone = true;
+          },
+          maxRetries: 1,
+        });
+
+        const summary = await session.done();
+
+        // onReady throw should trigger mesh:failed
+        expect(failedEvents).toContain("thrower");
+
+        // Session should complete (not hang)
+        expect(sessionDone).toBe(true);
+        expect(summary.status).toBe("failed");
+      },
+      15000
+    );
   });
-});

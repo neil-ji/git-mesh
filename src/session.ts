@@ -193,11 +193,9 @@ export class SessionImpl
   private startAgent(agent: AgentDefinition): void {
     const worktreeInfo = this.worktrees.get(agent.name);
     if (!worktreeInfo) {
-      this.emit(
-        "mesh:failed",
-        agent.name,
-        `Worktree not found for agent "${agent.name}"`
-      );
+      const reason = `Worktree not found for agent "${agent.name}"`;
+      this.emit("mesh:failed", agent.name, reason);
+      this.engine.markFailed(agent.name, reason);
       return;
     }
 
@@ -210,6 +208,18 @@ export class SessionImpl
       path: worktreeInfo.path,
       branch: worktreeInfo.branch,
       head: "",
+    };
+
+    // Agent 失败时的统一处理：emit 事件 + resolve deferred + 通知引擎
+    const handleAgentError = (agentName: string, error: Error) => {
+      this.emit("mesh:failed", agentName, error.message);
+      const d = this.agentDeferreds.get(agentName);
+      if (d) {
+        d.resolve(false);
+        this.agentDeferreds.delete(agentName);
+      }
+      // 通知引擎此 agent 已失败，确保引擎能完成计数并 resolve done promise
+      this.engine.markFailed(agentName, error.message);
     };
 
     const signal = createAgentSignal(
@@ -235,21 +245,14 @@ export class SessionImpl
           },
         };
       },
-      (agentName: string, error: Error) => {
-        this.emit("mesh:failed", agentName, error.message);
-        const d = this.agentDeferreds.get(agentName);
-        if (d) {
-          d.resolve(false);
-          this.agentDeferreds.delete(agentName);
-        }
-      }
+      handleAgentError
     );
 
     // 🔑 关键：先创建 signal + deferred，
     // 然后调用 onReady（不 await）,
     // 最后 enqueue（这样 agent 的 done() 调用时可以安全地
     // 进入 merge engine 队列）
-    invokeAgentReady(agent, signal);
+    invokeAgentReady(agent, signal, handleAgentError);
 
     // 如果 agent 在 onReady 中同步调用了 signal.done()，
     // deferred.promise 已经创建好了，enqueue 也已就绪
@@ -288,10 +291,14 @@ export class SessionImpl
   }
 
   /**
-   * 中断 session
+   * 中断 session。
+   *
+   * 清理所有 worktree，将未完成的 agent 标记为失败。
+   * 设置 finished = true，防止 done() 在 abort 后重新进入引擎。
    */
   async abort(reason?: string): Promise<void> {
     this.aborted = true;
+    this.finished = true;
     this.engine.abort();
 
     // Reject 所有未完成的 deferred

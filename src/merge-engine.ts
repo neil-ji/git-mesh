@@ -105,16 +105,64 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
   }
 
   /**
-   * 启动合并引擎
+   * 标记 Agent 为启动失败（onReady 抛出异常等场景）。
+   *
+   * 直接将失败条目加入队列，不经过 rebase/merge 流程。
+   * 确保引擎能正确统计并 resolve done promise。
+   */
+  markFailed(agentName: string, reason: string): void {
+    const entry: AgentEntry = {
+      item: {
+        agentName,
+        worktreePath: "",
+        branch: "",
+        onConflict: async () => ({ resolved: false }),
+        retries: 0,
+      },
+      state: "failed",
+      trunkHeadAtStart: "",
+      retryState: createRetryState(0),
+      abortController: new AbortController(),
+      result: {
+        agentName,
+        status: "failed",
+        reason,
+        cleaned: false,
+      },
+    };
+    this.queue.push(entry);
+    this.activeCount++;
+    this.checkAllDone();
+  }
+
+  /**
+   * 启动合并引擎。
+   *
+   * 如果引擎已被 abort，直接返回已有结果，不再重新启动。
+   * 在 await getTrunkHead 之后和 Promise 构造函数内部分别检查 isAborted，
+   * 覆盖 abort() 在引擎启动期间被调用的竞态窗口。
    */
   async start(): Promise<AgentResult[]> {
-    this.isRunning = true;
-    this.isAborted = false;
+    if (this.isAborted) {
+      return this.collectAbortedResults();
+    }
 
-    // 获取初始 trunk HEAD
+    this.isRunning = true;
+
+    // 获取初始 trunk HEAD（可能耗时，abort 可在此期间发生）
     this.trunkHead = await getTrunkHead(this.opts.cwd, this.opts.trunkBranch);
 
+    // 二次检查：abort 可能在 getTrunkHead 期间被调用
+    if (this.isAborted) {
+      return this.collectAbortedResults();
+    }
+
     return new Promise<AgentResult[]>((resolve) => {
+      // 三次检查：abort 可能在 Promise 构造函数执行前的微任务中被调用
+      if (this.isAborted) {
+        resolve(this.collectAbortedResults());
+        return;
+      }
       this.resolveDone = resolve;
 
       // 先处理已在队列中的 agent。
@@ -124,13 +172,56 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
   }
 
   /**
-   * 中断合并引擎
+   * 收集 abort 后的结果（包含队列中已有的和未入队的占位结果）
+   */
+  private collectAbortedResults(): AgentResult[] {
+    return this.queue.map(
+      (entry) =>
+        entry.result ?? {
+          agentName: entry.item.agentName,
+          status: "failed" as const,
+          reason: "Session aborted",
+          cleaned: false,
+        }
+    );
+  }
+
+  /**
+   * 中断合并引擎。
+   *
+   * 将所有非终止状态的 agent 标记为 failed，并直接 resolve done promise。
+   * 这确保了 Session.done() 不会在 abort 后永久挂起。
    */
   abort(): void {
     this.isAborted = true;
-    // 取消所有正在进行的操作
+    // 取消所有正在进行的操作，并将非终止状态的 agent 标记为失败
     for (const entry of this.queue) {
       entry.abortController.abort();
+      if (entry.state !== "merged" && entry.state !== "failed") {
+        entry.state = "failed";
+        entry.result = {
+          agentName: entry.item.agentName,
+          status: "failed",
+          reason: "Session aborted",
+          cleaned: false,
+        };
+      }
+    }
+    // 直接 resolve done promise，防止 Session.done() 永久挂起。
+    // 不使用 checkAllDone() 因为可能存在尚未入队的 agent
+    // （totalAgentCount > queue.length），此时 checkAllDone 无法 resolve。
+    if (this.resolveDone) {
+      const results = this.queue.map(
+        (entry) =>
+          entry.result ?? {
+            agentName: entry.item.agentName,
+            status: "failed" as const,
+            reason: "Session aborted",
+            cleaned: false,
+          }
+      );
+      this.resolveDone(results);
+      this.resolveDone = null;
     }
   }
 

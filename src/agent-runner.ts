@@ -60,20 +60,27 @@ export function createAgentSignal(
  */
 export function invokeAgentReady(
   definition: AgentDefinition,
-  signal: AgentWorkDoneSignal
+  signal: AgentWorkDoneSignal,
+  onError: (agentName: string, error: Error) => void
 ): void {
   try {
     const result = definition.onReady(signal);
     // 如果是 Promise，不 await —— 派发后即返回
     if (result instanceof Promise) {
       result.catch((err) => {
-        // onReady 异常记录但不断言失败——agent 可能仍在运行
-        // 调用方应通过 signal.done() 管理生命周期
+        // onReady 异步异常：notify via onError so session doesn't hang
+        onError(
+          definition.name,
+          err instanceof Error ? err : new Error(String(err))
+        );
       });
     }
   } catch (err) {
-    // onReady 的同步异常 —— agent 不会调用 done()
-    // 调用方应通过 onFailed 回调获知
+    // onReady 同步异常：agent 不会调用 done()，必须通知引擎
+    onError(
+      definition.name,
+      err instanceof Error ? err : new Error(String(err))
+    );
   }
 }
 

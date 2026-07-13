@@ -21,9 +21,10 @@ function gitmesh(options: GitmeshOptions): Promise<Session>;
 | `strategy` | `"rebase-first"` \| `"sequential"` | 否 | `"rebase-first"` | 合并策略 |
 | `maxRetries` | `number` | 否 | `3` | 每个 Agent 最大重试次数 |
 | `conflictTimeout` | `number` | 否 | `600_000` | 冲突解决超时（毫秒） |
-| `workspaceDir` | `string` | 否 | `"../.gitmesh-workspaces"` | worktree 存储目录 |
+| `workspaceDir` | `string` | 否 | `"../.gitmesh-workspaces"` | worktree 存储目录（相对于 `cwd` 的绝对路径）。每个 Agent 的 worktree 路径为 `{workspaceDir}/{agentName}` |
 | `trunkBranch` | `string` | 否 | `"main"` | 主干分支名 |
 | `branchPrefix` | `string` | 否 | `"mesh/"` | Agent 分支名前缀 |
+| `workspaceDir` | `string` | 否 | `"../.gitmesh-workspaces"` | worktree 存储目录。相对于 `cwd` 解析为绝对路径。每个 Agent 的 worktree 路径为 `{workspaceDir}/{agentName}`。默认为仓库父目录下的 `.gitmesh-workspaces/` |
 | `onMerged` | `(name: string, commit: string) => void` | 否 | — | Agent 合并成功回调 |
 | `onFailed` | `(name: string, reason: string) => void` | 否 | — | Agent 合并失败回调 |
 | `onConflict` | `(info: ConflictInfo) => void` | 否 | — | 冲突通知回调 |
@@ -169,7 +170,9 @@ const summary: SessionSummary = await session.done();
 
 ### `session.abort(reason?)`
 
-中断 session。清理所有 worktree 和分支。
+中断 session。清理所有 worktree 和分支，将未完成的 Agent 标记为失败，并触发 `session:done` 事件。
+
+**`abort()` 和 `done()` 互斥**：调用一个后，另一个会立即返回缓存结果（不再执行实际操作）。可以安全地在 `done()` 等待期间调用 `abort()` 来中断 session——`done()` 会正常返回而不会挂起。
 
 ```typescript
 await session.abort("用户取消");

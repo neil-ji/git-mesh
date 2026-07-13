@@ -104,37 +104,48 @@ describe("invokeAgentReady", () => {
     const def = makeDefinition({ onReady });
     const wt = makeWorktree();
     const { onDone } = makeOnDone();
-    const signal = createAgentSignal(def, wt, onDone, vi.fn());
+    const onError = vi.fn();
+    const signal = createAgentSignal(def, wt, onDone, onError);
 
-    invokeAgentReady(def, signal);
+    invokeAgentReady(def, signal, onError);
 
     // onReady 被同步调用
     expect(onReady).toHaveBeenCalledWith(signal);
+    expect(onError).not.toHaveBeenCalled();
   });
 
-  it("should not throw for async onReady that fails", () => {
+  it("should not throw for async onReady that fails", async () => {
+    const onError = vi.fn();
     const def = makeDefinition({
       onReady: async () => {
         throw new Error("agent start failed");
       },
     });
     const { onDone } = makeOnDone();
-    const signal = createAgentSignal(def, makeWorktree(), onDone, vi.fn());
+    const signal = createAgentSignal(def, makeWorktree(), onDone, onError);
 
     // invokeAgentReady 不再抛出 — fire-and-forget
-    expect(() => invokeAgentReady(def, signal)).not.toThrow();
+    expect(() => invokeAgentReady(def, signal, onError)).not.toThrow();
+
+    // 异步异常通过 onError 回调通知（等待 microtask）
+    await new Promise((r) => setTimeout(r, 10));
+    expect(onError).toHaveBeenCalledWith("test-agent", expect.any(Error));
   });
 
   it("should not throw for sync onReady that throws (fire-and-forget)", () => {
+    const onError = vi.fn();
     const def = makeDefinition({
       onReady: () => {
         throw new Error("sync fail");
       },
     });
     const { onDone } = makeOnDone();
-    const signal = createAgentSignal(def, makeWorktree(), onDone, vi.fn());
+    const signal = createAgentSignal(def, makeWorktree(), onDone, onError);
 
-    expect(() => invokeAgentReady(def, signal)).not.toThrow();
+    expect(() => invokeAgentReady(def, signal, onError)).not.toThrow();
+
+    // 同步异常通过 onError 回调通知
+    expect(onError).toHaveBeenCalledWith("test-agent", expect.any(Error));
   });
 });
 
