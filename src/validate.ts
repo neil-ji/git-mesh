@@ -14,9 +14,11 @@ import {
 /**
  * 校验 gitmesh 入参并填充默认值
  */
+export type ResolvedGitmeshOptions = Required<Pick<GitmeshOptions, 'cwd' | 'strategy' | 'maxRetries' | 'conflictTimeout' | 'workspaceDir' | 'trunkBranch' | 'branchPrefix'>> & Pick<GitmeshOptions, 'agents' | 'onMerged' | 'onFailed' | 'onConflict' | 'onDone'>;
+
 export function resolveOptions(
   options: GitmeshOptions
-): Required<GitmeshOptions> {
+): ResolvedGitmeshOptions {
   if (!options.agents || options.agents.length === 0) {
     throw new SessionError("At least one agent is required");
   }
@@ -55,6 +57,10 @@ export function resolveOptions(
     ),
     trunkBranch: options.trunkBranch ?? "main",
     branchPrefix: options.branchPrefix ?? "mesh/",
+    onMerged: options.onMerged,
+    onFailed: options.onFailed,
+    onConflict: options.onConflict,
+    onDone: options.onDone,
   };
 }
 

@@ -11,32 +11,52 @@
 
 import { TypedEventEmitter } from "./events";
 import { MergeEngine } from "./merge-engine";
-import { createWorktree, removeWorktree, getTrunkHead } from "./worktree";
+import { createWorktree, removeWorktree } from "./worktree";
 import { createAgentSignal, invokeAgentReady } from "./agent-runner";
-import { SessionError, SessionInterrupted } from "./errors";
+import { SessionError } from "./errors";
+import type { ResolvedGitmeshOptions } from "./validate";
 import type {
-  GitmeshOptions,
   Session,
   SessionSummary,
   SessionEvents,
   AgentResult,
   QueueItem,
+  AgentDefinition,
+  WorktreeInfo,
 } from "./types";
 
-interface ResolvedOptions extends Required<GitmeshOptions> {}
+/**
+ * Deferred Promise — 用于 signal.done() 返回的 Promise<boolean>
+ * 在 merge engine 处理完对应 agent 后 resolve
+ */
+class Deferred<T> {
+  promise: Promise<T>;
+  resolve!: (value: T) => void;
+  reject!: (reason?: any) => void;
+  constructor() {
+    this.promise = new Promise<T>((resolve, reject) => {
+      this.resolve = resolve;
+      this.reject = reject;
+    });
+  }
+}
 
 export class SessionImpl
   extends TypedEventEmitter<SessionEvents>
   implements Session
 {
-  private opts: ResolvedOptions;
+  private opts: ResolvedGitmeshOptions;
   private engine: MergeEngine;
   private worktrees: Map<string, { path: string; branch: string }> = new Map();
   private started: boolean = false;
   private finished: boolean = false;
   private aborted: boolean = false;
+  private agentDeferreds: Map<string, Deferred<boolean>> = new Map();
+  private agentQueueItems: Map<string, QueueItem> = new Map();
+  private doneCount: number = 0;
+  private totalAgentCount: number = 0;
 
-  constructor(opts: ResolvedOptions) {
+  constructor(opts: ResolvedGitmeshOptions) {
     super();
     this.opts = opts;
     this.engine = new MergeEngine({
@@ -47,34 +67,74 @@ export class SessionImpl
       maxRetries: opts.maxRetries,
       conflictTimeout: opts.conflictTimeout,
       strategy: opts.strategy,
+      totalAgentCount: opts.agents.length,
     });
 
-    // 代理合并引擎的事件
+    // 在构造函数中注册回调——早于任何事件可能触发
+    this.registerCallbacks();
     this.proxyEngineEvents();
   }
 
   /**
-   * 代理合并引擎的所有事件到 session 层面
+   * 注册用户传入的 onMerged / onFailed / onConflict / onDone 回调。
+   * 因为是构造函数里就注册的，不存在"session.on 太晚"的时序问题。
    */
-  private proxyEngineEvents(): void {
-    const events: Array<keyof SessionEvents> = [
-      "agent:done",
-      "mesh:rebase",
-      "mesh:conflict",
-      "mesh:retry",
-      "mesh:merged",
-      "mesh:failed",
-    ];
-
-    for (const event of events) {
-      this.engine.on(event, ((...args: any[]) => {
-        (this.emit as any)(event, ...args);
-      }) as any);
+  private registerCallbacks(): void {
+    if (this.opts.onMerged) {
+      this.on("mesh:merged", this.opts.onMerged);
+    }
+    if (this.opts.onFailed) {
+      this.on("mesh:failed", this.opts.onFailed);
+    }
+    if (this.opts.onConflict) {
+      this.on("mesh:conflict", this.opts.onConflict);
+    }
+    if (this.opts.onDone) {
+      this.on("session:done", this.opts.onDone);
     }
   }
 
   /**
-   * 启动 session：创建所有 worktree，启动 agent
+   * 代理合并引擎的事件到 session 层面，同时处理 signal.done() 的 Promise
+   */
+  private proxyEngineEvents(): void {
+    // 直接代理的事件
+    const passthrough: Array<keyof SessionEvents> = [
+      "mesh:rebase",
+      "mesh:conflict",
+      "mesh:retry",
+    ];
+    for (const event of passthrough) {
+      this.engine.on(event, ((...args: any[]) => {
+        (this.emit as any)(event, ...args);
+      }) as any);
+    }
+
+    // mesh:merged — 触发事件 + resolve 对应的 signal.done() Promise
+    this.engine.on("mesh:merged", (name: string, commit: string) => {
+      this.emit("mesh:merged", name, commit);
+      const d = this.agentDeferreds.get(name);
+      if (d) {
+        d.resolve(true);
+        this.agentDeferreds.delete(name);
+      }
+    });
+
+    // mesh:failed — 触发事件 + reject/resolve 对应的 signal.done() Promise
+    this.engine.on("mesh:failed", (name: string, reason: string) => {
+      this.emit("mesh:failed", name, reason);
+      const d = this.agentDeferreds.get(name);
+      if (d) {
+        d.resolve(false);
+        this.agentDeferreds.delete(name);
+      }
+    });
+  }
+
+  /**
+   * 启动 session：创建 worktree + 通知 Agent 开始工作。
+   *
+   * 不会等待 onReady 返回——Agent 生命周期以 signal.done() 为准。
    */
   async start(): Promise<void> {
     if (this.started) {
@@ -85,26 +145,31 @@ export class SessionImpl
     }
 
     this.started = true;
+    this.totalAgentCount = this.opts.agents.length;
 
     // 为每个 agent 创建 worktree
     for (const agent of this.opts.agents) {
-      const baseRef = agent.baseRef ?? this.opts.trunkBranch;
+      if (this.aborted) {
+        // 中途 abort，清理已创建的 worktree
+        await this.cleanupAllWorktrees();
+        return;
+      }
 
+      const baseRef = agent.baseRef ?? this.opts.trunkBranch;
       try {
         const worktreeInfo = await createWorktree(agent.name, baseRef, {
           cwd: this.opts.cwd,
           workspaceDir: this.opts.workspaceDir,
           branchPrefix: this.opts.branchPrefix,
         });
-
         this.worktrees.set(agent.name, {
           path: worktreeInfo.path,
           branch: worktreeInfo.branch,
         });
-
         this.emit("worktree:ready", worktreeInfo);
       } catch (err) {
-        // worktree 创建失败，终止 session
+        // worktree 创建失败，清理并终止
+        await this.cleanupAllWorktrees();
         throw new SessionError(
           `Failed to create worktree for agent "${agent.name}"`,
           err
@@ -112,38 +177,47 @@ export class SessionImpl
       }
     }
 
-    // 通知各 Agent 开始工作
-    // 使用 Promise.allSettled 以保证一个 agent 的 onReady 失败不影响其他
-    const readyPromises = this.opts.agents.map((agent) => {
-      return this.startAgent(agent);
-    });
-
-    await Promise.allSettled(readyPromises);
+    // Fire-and-forget：通知每个 agent 开始工作
+    for (const agent of this.opts.agents) {
+      if (this.aborted) break;
+      this.startAgent(agent);
+    }
   }
 
   /**
-   * 为单个 Agent 启动工作流
+   * 为单个 Agent 启动工作流。
+   *
+   * signal.done() 返回 Promise<boolean>，
+   * 在 merge engine 处理完该 agent 后 resolve。
    */
-  private async startAgent(agent: typeof this.opts.agents[number]): Promise<void> {
+  private startAgent(agent: AgentDefinition): void {
     const worktreeInfo = this.worktrees.get(agent.name);
     if (!worktreeInfo) {
-      throw new SessionError(
+      this.emit(
+        "mesh:failed",
+        agent.name,
         `Worktree not found for agent "${agent.name}"`
       );
+      return;
     }
 
-    // 创建 done 回调，将 agent 加入合并队列
+    // 创建 Deferred，让 signal.done() 能返回 Promise
+    const deferred = new Deferred<boolean>();
+    this.agentDeferreds.set(agent.name, deferred);
+
+    const wtInfo: WorktreeInfo = {
+      name: agent.name,
+      path: worktreeInfo.path,
+      branch: worktreeInfo.branch,
+      head: "",
+    };
+
     const signal = createAgentSignal(
       agent,
-      {
-        name: agent.name,
-        path: worktreeInfo.path,
-        branch: worktreeInfo.branch,
-        head: "", // will be resolved inside the worktree
-      },
+      wtInfo,
       (agentName: string) => {
-        this.emit("agent:done", agentName);
-
+        this.doneCount++;
+        // 构建 QueueItem 并返回 enqueue 函数 + promise
         const queueItem: QueueItem = {
           agentName,
           worktreePath: worktreeInfo.path,
@@ -151,16 +225,34 @@ export class SessionImpl
           onConflict: agent.onConflict,
           retries: 0,
         };
+        this.agentQueueItems.set(agentName, queueItem);
 
-        this.engine.enqueue(queueItem);
+        return {
+          promise: deferred.promise,
+          enqueue: () => {
+            this.emit("agent:done", agentName);
+            this.engine.enqueue(queueItem);
+          },
+        };
       },
       (agentName: string, error: Error) => {
         this.emit("mesh:failed", agentName, error.message);
+        const d = this.agentDeferreds.get(agentName);
+        if (d) {
+          d.resolve(false);
+          this.agentDeferreds.delete(agentName);
+        }
       }
     );
 
-    // 调用 onReady （在 worktree 中启动 agent）
-    await invokeAgentReady(agent, signal);
+    // 🔑 关键：先创建 signal + deferred，
+    // 然后调用 onReady（不 await）,
+    // 最后 enqueue（这样 agent 的 done() 调用时可以安全地
+    // 进入 merge engine 队列）
+    invokeAgentReady(agent, signal);
+
+    // 如果 agent 在 onReady 中同步调用了 signal.done()，
+    // deferred.promise 已经创建好了，enqueue 也已就绪
   }
 
   /**
@@ -175,8 +267,15 @@ export class SessionImpl
       return this.buildSummary();
     }
 
-    // 启动合并引擎（开始处理已完成的 agent）
-    const results = await this.engine.start();
+    // 启动引擎（此时队列可能为空——agent 还在工作中）
+    const enginePromise = this.engine.start();
+
+    // 等待每个 agent 的 signal.done() 调用，然后入队
+    // enqueue 会自动触发 processQueue，所以引擎会持续处理
+    // 引擎在 checkAllDone 中判断所有 agent 处理完毕
+
+    // 等待引擎完成
+    const results = await enginePromise;
 
     // 清理成功的 worktree
     await this.engine.cleanupSuccessful();
@@ -195,25 +294,41 @@ export class SessionImpl
     this.aborted = true;
     this.engine.abort();
 
-    // 清理所有 worktree
-    for (const [name] of this.worktrees) {
-      try {
-        await removeWorktree(name, {
-          cwd: this.opts.cwd,
-          workspaceDir: this.opts.workspaceDir,
-          branchPrefix: this.opts.branchPrefix,
-        }, true); // force remove
-      } catch {
-        // 清理失败不影响
-      }
+    // Reject 所有未完成的 deferred
+    for (const [name, d] of this.agentDeferreds) {
+      d.resolve(false);
     }
+    this.agentDeferreds.clear();
 
-    this.worktrees.clear();
+    await this.cleanupAllWorktrees();
+
     this.emit("session:done", {
       status: "failed",
       results: [],
       trunkHead: "",
     });
+  }
+
+  /**
+   * 清理所有 worktree
+   */
+  private async cleanupAllWorktrees(): Promise<void> {
+    for (const [name] of this.worktrees) {
+      try {
+        await removeWorktree(
+          name,
+          {
+            cwd: this.opts.cwd,
+            workspaceDir: this.opts.workspaceDir,
+            branchPrefix: this.opts.branchPrefix,
+          },
+          true
+        );
+      } catch {
+        // 清理失败不影响
+      }
+    }
+    this.worktrees.clear();
   }
 
   /**
@@ -223,34 +338,23 @@ export class SessionImpl
     const finalResults = results ?? [];
 
     if (finalResults.length === 0) {
-      return {
-        status: "failed",
-        results: [],
-        trunkHead: "",
-      };
+      return { status: "failed", results: [], trunkHead: "" };
     }
 
     const allMerged = finalResults.every((r) => r.status === "merged");
     const allFailed = finalResults.every((r) => r.status !== "merged");
 
     let status: SessionSummary["status"];
-    if (allMerged) {
-      status = "success";
-    } else if (allFailed) {
-      status = "failed";
-    } else {
-      status = "partial";
-    }
+    if (allMerged) status = "success";
+    else if (allFailed) status = "failed";
+    else status = "partial";
 
-    const trunkHead = finalResults
-      .filter((r) => r.status === "merged")
-      .map((r) => r.mergeCommit!)
-      .pop() ?? "";
+    // 取引擎返回的 trunkHead（结果中最后一个 merged agent 的 commit 即为最新 HEAD）
+    const lastMerged = [...finalResults]
+      .reverse()
+      .find((r) => r.status === "merged");
+    const trunkHead = lastMerged?.mergeCommit ?? "";
 
-    return {
-      status,
-      results: finalResults,
-      trunkHead,
-    };
+    return { status, results: finalResults, trunkHead };
   }
 }

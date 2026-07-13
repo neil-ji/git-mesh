@@ -19,6 +19,14 @@ export interface GitmeshOptions {
   trunkBranch?: string;
   /** Agent 分支名前缀，默认 "mesh/" */
   branchPrefix?: string;
+  /** Agent 成功合并回调，免去事件注册的时序问题 */
+  onMerged?: (name: string, commit: string) => void;
+  /** Agent 合并失败回调 */
+  onFailed?: (name: string, reason: string) => void;
+  /** 检测到冲突时回调 */
+  onConflict?: (info: ConflictInfo) => void;
+  /** Session 完成回调 */
+  onDone?: (summary: SessionSummary) => void;
 }
 
 export interface AgentDefinition {
@@ -35,8 +43,13 @@ export interface AgentDefinition {
 export interface AgentWorkDoneSignal {
   agentName: string;
   worktreePath: string;
-  /** 调用此方法通知 gitmesh：Agent 已完成，可以合并 */
-  done: () => void;
+  /**
+   * 通知 gitmesh 编码完成，返回 merge 结果的 Promise。
+   *
+   * - `true`  — 成功合入主干
+   * - `false` — 合并失败（冲突无解、重试耗尽等）
+   */
+  done: () => Promise<boolean>;
 }
 
 export type AgentResolveConflict = (

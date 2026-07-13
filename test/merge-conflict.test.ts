@@ -261,8 +261,9 @@ describe("Merge Engine — Conflict & Retry", () => {
 
     await donePromise;
 
-    // First rebase → conflict → retry → resolve → merge
-    expect(events.filter((e) => e.startsWith("rebase:"))).toHaveLength(1);
+    // rebase → conflict → retry (processRebase again) → resolve → merge
+    // 新版合并引擎在冲突解决后重试时会再次 emit mesh:rebase
+    expect(events.filter((e) => e.startsWith("rebase:"))).toHaveLength(2);
     expect(events.filter((e) => e.startsWith("conflict:"))).toHaveLength(1);
     expect(events.filter((e) => e.startsWith("retry:"))).toHaveLength(1);
     expect(events.filter((e) => e.startsWith("merged:"))).toHaveLength(1);

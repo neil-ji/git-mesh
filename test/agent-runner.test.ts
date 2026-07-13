@@ -29,7 +29,7 @@ function makeDefinition(
 ): AgentDefinition {
   return {
     name: "test-agent",
-    onReady: async () => {},
+    onReady: () => {},
     onConflict: async (_: ConflictInfo): Promise<ResolutionResult> => ({
       resolved: false,
     }),
@@ -37,11 +37,23 @@ function makeDefinition(
   };
 }
 
+/** 新版 onDone 签名：返回 { promise, enqueue } */
+function makeOnDone() {
+  const deferred = (() => {
+    let resolve!: (v: boolean) => void;
+    const promise = new Promise<boolean>((r) => { resolve = r; });
+    return { promise, resolve };
+  })();
+  const enqueue = vi.fn();
+  const onDone = vi.fn((_name: string) => ({ promise: deferred.promise, enqueue }));
+  return { onDone, ...deferred, enqueue };
+}
+
 describe("createAgentSignal", () => {
   it("should create signal with correct properties", () => {
     const def = makeDefinition();
     const wt = makeWorktree();
-    const onDone = vi.fn();
+    const { onDone } = makeOnDone();
     const onError = vi.fn();
 
     const signal = createAgentSignal(def, wt, onDone, onError);
@@ -54,7 +66,7 @@ describe("createAgentSignal", () => {
   it("should call onDone when done() is invoked", () => {
     const def = makeDefinition();
     const wt = makeWorktree();
-    const onDone = vi.fn();
+    const { onDone } = makeOnDone();
     const onError = vi.fn();
 
     const signal = createAgentSignal(def, wt, onDone, onError);
@@ -64,58 +76,65 @@ describe("createAgentSignal", () => {
     expect(onError).not.toHaveBeenCalled();
   });
 
-  it("should ignore second done() call (one-shot guard)", () => {
+  it("should return same promise on repeated done() calls", async () => {
     const def = makeDefinition();
     const wt = makeWorktree();
-    const onDone = vi.fn();
+    const { onDone, resolve } = makeOnDone();
     const onError = vi.fn();
 
     const signal = createAgentSignal(def, wt, onDone, onError);
-    signal.done();
-    signal.done();
-    signal.done();
+    const p1 = signal.done();
+    const p2 = signal.done();
+    const p3 = signal.done();
 
+    // 同一个 deferred
     expect(onDone).toHaveBeenCalledTimes(1);
+
+    // resolve 后所有 promise 都得到相同结果
+    resolve(true);
+    expect(await p1).toBe(true);
+    expect(await p2).toBe(true);
+    expect(await p3).toBe(true);
   });
 });
 
 describe("invokeAgentReady", () => {
-  it("should call onReady with the signal", async () => {
+  it("should call onReady with the signal (fire-and-forget)", () => {
     const onReady = vi.fn();
     const def = makeDefinition({ onReady });
     const wt = makeWorktree();
-    const signal = createAgentSignal(def, wt, vi.fn(), vi.fn());
+    const { onDone } = makeOnDone();
+    const signal = createAgentSignal(def, wt, onDone, vi.fn());
 
-    await invokeAgentReady(def, signal);
+    invokeAgentReady(def, signal);
 
+    // onReady 被同步调用
     expect(onReady).toHaveBeenCalledWith(signal);
   });
 
-  it("should work with async onReady", async () => {
-    let called = false;
-    const def = makeDefinition({
-      onReady: async () => {
-        await new Promise((r) => setTimeout(r, 10));
-        called = true;
-      },
-    });
-    const signal = createAgentSignal(def, makeWorktree(), vi.fn(), vi.fn());
-
-    await invokeAgentReady(def, signal);
-    expect(called).toBe(true);
-  });
-
-  it("should propagate errors from onReady", async () => {
+  it("should not throw for async onReady that fails", () => {
     const def = makeDefinition({
       onReady: async () => {
         throw new Error("agent start failed");
       },
     });
-    const signal = createAgentSignal(def, makeWorktree(), vi.fn(), vi.fn());
+    const { onDone } = makeOnDone();
+    const signal = createAgentSignal(def, makeWorktree(), onDone, vi.fn());
 
-    await expect(invokeAgentReady(def, signal)).rejects.toThrow(
-      "agent start failed"
-    );
+    // invokeAgentReady 不再抛出 — fire-and-forget
+    expect(() => invokeAgentReady(def, signal)).not.toThrow();
+  });
+
+  it("should not throw for sync onReady that throws (fire-and-forget)", () => {
+    const def = makeDefinition({
+      onReady: () => {
+        throw new Error("sync fail");
+      },
+    });
+    const { onDone } = makeOnDone();
+    const signal = createAgentSignal(def, makeWorktree(), onDone, vi.fn());
+
+    expect(() => invokeAgentReady(def, signal)).not.toThrow();
   });
 });
 

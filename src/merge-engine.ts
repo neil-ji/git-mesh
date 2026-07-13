@@ -45,6 +45,8 @@ export interface MergeEngineOptions {
   maxRetries: number;
   conflictTimeout: number;
   strategy: string;
+  /** 预期 agent 数量（checkAllDone 用） */
+  totalAgentCount?: number;
 }
 
 /**
@@ -96,8 +98,10 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
     this.queue.push(entry);
     this.activeCount++;
 
-    // 如果引擎已经在运行，处理会在 processQueue 中自动进行
-    // 否则，需要启动（由 start 调用触发第一次 processQueue）
+    // 引擎已启动，立即触发处理（应对 agent 在 done() 后入队的场景）
+    if (this.isRunning) {
+      this.processQueue();
+    }
   }
 
   /**
@@ -113,8 +117,9 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
     return new Promise<AgentResult[]>((resolve) => {
       this.resolveDone = resolve;
 
-      // 延迟启动，确保所有 agents 已入队
-      setTimeout(() => this.processQueue(), 10);
+      // 先处理已在队列中的 agent。
+      // 之后通过 enqueue() 触发的 agent 也会自动调用 processQueue()。
+      this.processQueue();
     });
   }
 
@@ -426,6 +431,10 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
    * 检查是否所有 agent 都已处理完毕
    */
   private checkAllDone(): void {
+    // 必须等待至少 expected 个 agent 入队，且全部处理完毕
+    const expected = this.opts.totalAgentCount ?? this.queue.length;
+    if (this.queue.length < expected) return;
+
     const pending = this.queue.filter(
       (e) =>
         e.state === "queued" ||
@@ -435,11 +444,6 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
     );
 
     if (pending.length === 0 && this.resolveDone) {
-      const results = this.queue
-        .filter((e) => e.result)
-        .map((e) => e.result!);
-
-      // 确保所有 agent 都有结果
       const allResults: AgentResult[] = [];
       for (const entry of this.queue) {
         allResults.push(

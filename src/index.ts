@@ -60,22 +60,19 @@ export {
  *   agents: [
  *     {
  *       name: "fix-auth",
- *       onReady: async (signal) => {
- *         // Agent 在 signal.worktreePath 中工作
- *         await runAgent({ cwd: signal.worktreePath });
- *         signal.done(); // 通知 gitmesh 可以合并
+ *       onReady: (signal) => {
+ *         // fire-and-forget: Agent 在 signal.worktreePath 中工作
+ *         // gitmesh 不等待 onReady 返回，生命周期以 signal.done() 为准
+ *         runAgent({ cwd: signal.worktreePath }).then(() => signal.done());
  *       },
  *       onConflict: async (conflict) => {
- *         // 让 Agent 解决冲突
  *         return runConflictResolver(conflict);
  *       },
  *     },
  *   ],
  *   strategy: "rebase-first",
- * });
- *
- * session.on("mesh:merged", (name, commit) => {
- *   console.log(`${name} merged: ${commit}`);
+ *   onMerged: (name, commit) => console.log(`${name} merged: ${commit}`),
+ *   onFailed: (name, reason) => console.error(`${name} failed: ${reason}`),
  * });
  *
  * const summary = await session.done();
