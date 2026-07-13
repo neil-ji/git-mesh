@@ -45,6 +45,4 @@ jobs:
           EDITOR: 'true'
 
       - name: Publish
-        run: npm publish --tag ${{ inputs.tag || 'latest' }}
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --provenance --tag ${{ inputs.tag || 'latest' }}
