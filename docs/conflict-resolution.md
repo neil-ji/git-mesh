@@ -60,6 +60,12 @@ interface ConflictInfo {
 
 ## 冲突解决循环
 
+gitmesh 将冲突解决封装为一个标准的交互式循环。有两种使用方式：
+
+### 方式一：`onConflict`（完全自定义，优先级最高）
+
+适合需要完全控制冲突处理流程的场景。
+
 ```
 发生冲突
     │
@@ -67,7 +73,7 @@ interface ConflictInfo {
 构建 ConflictInfo
     │
     ▼
-调用 Agent.onConflict(conflict)        ← 你的 Agent 在这里解决冲突
+调用 Agent.onConflict(conflict)        ← 你的 Agent 完全控制
     │
     ├─ { resolved: true }
     │       │
@@ -86,6 +92,69 @@ interface ConflictInfo {
             │
             └─ 标记此 Agent 失败，记录 reason
                跳过，保留 worktree 供人工介入
+```
+
+### 方式二：`resolveConflict`（内建循环，新增）
+
+gitmesh 自动构建 prompt、管理重试循环，Agent 只需关注解决冲突本身。
+
+```
+发生冲突
+    │
+    ▼
+buildConflictPrompt(conflict)   ← gitmesh 自动生成 prompt
+    │
+    ▼
+resolveConflict({              ← 你的 Agent 收到封装好的参数
+  worktreePath,                ← 在哪解决
+  prompt,                      ← LLM/人类可读的冲突描述
+  conflict,                    ← 原始结构化数据
+})
+    │
+    ├─ return（成功）→ { resolved: true }
+    │       │
+    │       ▼
+    │   git add . && git rebase --continue ← gitmesh 自动执行
+    │       │
+    │       ├─ 成功 → 合并
+    │       └─ 又冲突 → 再次 resolveConflict（自动循环）
+    │
+    └─ throw（失败）→ { resolved: false, reason: ... }
+            │
+            └─ 标记失败，保留 worktree
+```
+
+**优先级规则**：如果同时设置 `onConflict` 和 `resolveConflict`，`onConflict` 生效。
+
+**prompt 自定义**：通过 `conflictPromptOptions` 控制 prompt 生成：
+
+```typescript
+{
+  resolveConflict: async ({ worktreePath, prompt, conflict }) => {
+    await runAgent(worktreePath, prompt);
+  },
+  conflictPromptOptions: {
+    header: "自定义提示头...",   // 覆盖默认头部
+    hints: true,                 // 包含追加策略提示（默认 true）
+    maxFileContent: 4000,        // 单文件内容截断长度（默认 8000）
+  },
+}
+```
+
+### 手动使用 `buildConflictPrompt()`
+
+`buildConflictPrompt` 也作为公开 API 导出，可在 `onConflict` 模式中手动调用：
+
+```typescript
+import { buildConflictPrompt } from "gitmesh";
+
+onConflict: async (conflict) => {
+  const prompt = buildConflictPrompt(conflict, {
+    header: "你是一个 TypeScript 专家...",
+  });
+  await runAgent(conflict.worktreePath, prompt);
+  return { resolved: true };
+}
 ```
 
 ## 重试控制

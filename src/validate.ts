@@ -37,9 +37,9 @@ export function resolveOptions(
         `Agent "${agent.name}" must have an onReady callback`
       );
     }
-    if (typeof agent.onConflict !== "function") {
+    if (typeof agent.onConflict !== "function" && typeof agent.resolveConflict !== "function") {
       throw new SessionError(
-        `Agent "${agent.name}" must have an onConflict callback`
+        `Agent "${agent.name}" must have an onConflict or resolveConflict callback`
       );
     }
   }

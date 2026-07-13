@@ -29,6 +29,36 @@ export interface GitmeshOptions {
   onDone?: (summary: SessionSummary) => void;
 }
 
+// === 冲突解决（resolveConflict 模式） ===
+
+/**
+ * 冲突描述 prompt 的可自定义选项。
+ * 仅用于 resolveConflict 模式，不适用于 onConflict（用户手写 prompt）。
+ */
+export interface ConflictPromptOptions {
+  /** 自定义 prompt 头部文本，覆盖默认的冲突描述头 */
+  header?: string;
+  /** 是否包含追加策略提示（如检测到双发都是追加新行时提示合并）。默认 true */
+  hints?: boolean;
+  /** 单个文件内容的最大字符数，超过则截断。默认 8000 */
+  maxFileContent?: number;
+}
+
+/**
+ * resolveConflict 回调的参数。
+ * gitmesh 自动构建 prompt 后传入，Agent 只需关注解决冲突本身。
+ */
+export interface ConflictResolutionParams {
+  /** Agent 应在哪个目录内解决冲突（worktree 路径） */
+  worktreePath: string;
+  /** 人类/LLM 可读的冲突描述，由 gitmesh 根据 ConflictInfo 自动生成 */
+  prompt: string;
+  /** 原始结构化冲突信息，供程序化处理 */
+  conflict: ConflictInfo;
+}
+
+// === Agent ===
+
 export interface AgentDefinition {
   /** 唯一名称，用作 worktree 目录名和分支名的一部分 */
   name: string;
@@ -36,8 +66,29 @@ export interface AgentDefinition {
   baseRef?: string;
   /** Agent 工作完成回调，调用方在此通知 gitmesh */
   onReady: (signal: AgentWorkDoneSignal) => void | Promise<void>;
-  /** 冲突解决回调，调用方在此桥接 Agent 解决冲突 */
-  onConflict: AgentResolveConflict;
+  /**
+   * 冲突解决回调（完全自定义模式，优先级最高）。
+   *
+   * 如果同时设置 onConflict 和 resolveConflict，onConflict 优先生效。
+   * 返回 { resolved: true } 通知 gitmesh 继续 rebase；
+   * 返回 { resolved: false } 放弃本次合并。
+   */
+  onConflict?: AgentResolveConflict;
+  /**
+   * 自动冲突解决回调（内建循环模式）。
+   *
+   * gitmesh 在检测到冲突时自动：
+   * 1. 调用 buildConflictPrompt() 构建冲突描述
+   * 2. 调用此函数，传入 { worktreePath, prompt, conflict }
+   * 3. Agent 解决冲突后 return（不需要 git add，gitmesh 自动处理）
+   * 4. gitmesh 执行 git rebase --continue
+   * 5. 如果还有后续冲突，自动重试（循环），最多 maxRetries 次
+   *
+   * 仅在未设置 onConflict 时生效。
+   */
+  resolveConflict?: (params: ConflictResolutionParams) => Promise<void>;
+  /** resolveConflict 模式下的 prompt 自定义选项 */
+  conflictPromptOptions?: ConflictPromptOptions;
 }
 
 export interface AgentWorkDoneSignal {

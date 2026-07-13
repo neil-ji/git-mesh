@@ -14,6 +14,7 @@ import { MergeEngine } from "./merge-engine";
 import { createWorktree, removeWorktree } from "./worktree";
 import { createAgentSignal, invokeAgentReady } from "./agent-runner";
 import { SessionError } from "./errors";
+import { buildConflictPrompt } from "./conflict";
 import type { ResolvedGitmeshOptions } from "./validate";
 import type {
   Session,
@@ -22,7 +23,10 @@ import type {
   AgentResult,
   QueueItem,
   AgentDefinition,
+  AgentResolveConflict,
   WorktreeInfo,
+  ConflictInfo,
+  ResolutionResult,
 } from "./types";
 
 /**
@@ -232,7 +236,7 @@ export class SessionImpl
           agentName,
           worktreePath: worktreeInfo.path,
           branch: worktreeInfo.branch,
-          onConflict: agent.onConflict,
+          onConflict: this.resolveEffectiveConflictHandler(agent),
           retries: 0,
         };
         this.agentQueueItems.set(agentName, queueItem);
@@ -256,6 +260,56 @@ export class SessionImpl
 
     // 如果 agent 在 onReady 中同步调用了 signal.done()，
     // deferred.promise 已经创建好了，enqueue 也已就绪
+  }
+
+  /**
+   * 根据优先级解析有效的 onConflict 处理器。
+   *
+   * 优先级：onConflict（用户手写，最高）> resolveConflict（内建循环）> 默认放弃
+   *
+   * merge-engine 的冲突循环已内置（processConflict → continueRebase → retry）。
+   * 此方法只负责桥接用户回调，不重写循环。
+   */
+  private resolveEffectiveConflictHandler(
+    agent: AgentDefinition
+  ): AgentResolveConflict {
+    // 优先级 1：用户手写 onConflict（完全自定义模式）
+    if (agent.onConflict) {
+      return agent.onConflict;
+    }
+
+    // 优先级 2：resolveConflict（内建循环模式）
+    if (agent.resolveConflict) {
+      return async (
+        conflict: ConflictInfo
+      ): Promise<ResolutionResult> => {
+        try {
+          const prompt = buildConflictPrompt(
+            conflict,
+            agent.conflictPromptOptions
+          );
+          await agent.resolveConflict!({
+            worktreePath: conflict.worktreePath,
+            prompt,
+            conflict,
+          });
+          return { resolved: true };
+        } catch (err) {
+          return {
+            resolved: false,
+            reason:
+              err instanceof Error ? err.message : String(err),
+          };
+        }
+      };
+    }
+
+    // 优先级 3：默认放弃（无处理器）
+    return async (): Promise<ResolutionResult> => ({
+      resolved: false,
+      reason:
+        "No onConflict or resolveConflict handler configured — cannot resolve",
+    });
   }
 
   /**

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.18] - 2026-07-13
+
+_冲突解决循环内建 — resolveConflict 模式。_
+
+- feat: 新增 `resolveConflict` 回调 — gitmesh 自动构建 prompt、管理冲突循环，Agent 只需关注解决冲突本身
+- feat: 新增 `buildConflictPrompt()` 公开 API — 将 ConflictInfo 翻译为 LLM/人类可读的冲突描述（纯函数，不依赖任何 SDK）
+- feat: prompt 生成支持自定义（`ConflictPromptOptions`）：header、hints（追加模式检测）、maxFileContent 截断
+- feat: `AgentDefinition.onConflict` 改为可选 — 可仅提供 `resolveConflict`，优先级 onConflict > resolveConflict > 默认放弃
+- test: 新增 7 个 `buildConflictPrompt` 单测 + 4 个 `resolveConflict` 集成测试（共 120 个测试）
+- docs: 更新冲突解决文档，补充两种模式的循环流程图和使用指南
+
 ## [0.1.17] - 2026-07-13
 
 _SDK 集成 & 包体积优化。_

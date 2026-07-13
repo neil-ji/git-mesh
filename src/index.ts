@@ -15,6 +15,8 @@ export type {
   AgentDefinition,
   AgentWorkDoneSignal,
   AgentResolveConflict,
+  ConflictResolutionParams,
+  ConflictPromptOptions,
   Session,
   SessionSummary,
   AgentResult,
@@ -26,6 +28,9 @@ export type {
   WorktreeStatus,
   MergeStrategyName,
 } from "./types";
+
+// 导出工具函数
+export { buildConflictPrompt } from "./conflict";
 
 // 导出错误类
 export {

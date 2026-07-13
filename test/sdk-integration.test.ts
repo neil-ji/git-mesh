@@ -13,7 +13,8 @@ import * as fs from "fs";
 import { createTempRepo, TempRepo } from "./_helpers";
 import { gitmesh } from "../src/index";
 import { execGit } from "../src/git";
-import type { ResolutionResult, ConflictInfo, AgentWorkDoneSignal } from "../src/types";
+import { buildConflictPrompt } from "../src/conflict";
+import type { ResolutionResult, ConflictInfo, AgentWorkDoneSignal, ConflictResolutionParams } from "../src/types";
 
 // simple-git is an optional peer — tests import it dynamically
 // so the suite still compiles even if simple-git isn't installed.
@@ -399,6 +400,236 @@ describe("AgentResult.worktreePath contract", () => {
       expect(summary.status).toBe("success");
       // The AgentResult should carry the same worktreePath
       expect(summary.results[0].worktreePath).toBe(capturedWorktreePath);
+    },
+    30000,
+  );
+});
+
+// ---------------------------------------------------------------------------
+// resolveConflict mode — gitmesh-managed conflict loop
+// ---------------------------------------------------------------------------
+describe("resolveConflict mode", () => {
+  beforeAll(async () => {
+    repo = await createTempRepo();
+  });
+
+  afterAll(() => {
+    repo.cleanup();
+    cleanupWorkspace();
+  });
+
+  it(
+    "should auto-resolve conflict via resolveConflict callback",
+    async () => {
+      cleanupWorkspace();
+
+      // Create real conflict: trunk modifies README, agent modifies same file from old base
+      const baseCommit = await execGit(["rev-parse", "HEAD"], { cwd: repo.cwd });
+      // Trunk: modify README.md
+      fs.writeFileSync(path.join(repo.cwd, "README.md"), "# Trunk version\n\nTrunk changes.\n");
+      await execGit(["add", "README.md"], { cwd: repo.cwd });
+      await execGit(["commit", "-m", "trunk modifies readme"], { cwd: repo.cwd });
+
+      let receivedPrompt = "";
+      let receivedWorktreePath = "";
+
+      const session = await gitmesh({
+        cwd: repo.cwd,
+        workspaceDir,
+        agents: [
+          {
+            name: "rc-test",
+            baseRef: baseCommit,
+            onReady: async (signal: AgentWorkDoneSignal) => {
+              // Agent modifies same file from old base → conflict
+              const fp = path.join(signal.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Agent version\n\nAgent changes.\n");
+              await execGit(["add", "README.md"], { cwd: signal.worktreePath });
+              await execGit(["commit", "-m", "agent changes readme"], {
+                cwd: signal.worktreePath,
+              });
+              signal.done();
+            },
+            resolveConflict: async (params: ConflictResolutionParams) => {
+              receivedPrompt = params.prompt;
+              receivedWorktreePath = params.worktreePath;
+
+              // Verify params are well-formed
+              expect(params.prompt).toContain("rc-test");
+              expect(params.prompt).toContain("README.md");
+              expect(params.conflict.agentName).toBe("rc-test");
+              expect(fs.existsSync(params.worktreePath)).toBe(true);
+
+              // Resolve: overwrite with merged content
+              const fp = path.join(params.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Resolved by rc-test\n\nMerged.\n");
+            },
+          },
+        ],
+        strategy: "rebase-first",
+        maxRetries: 3,
+      });
+
+      const summary = await session.done();
+
+      expect(receivedPrompt).toBeTruthy();
+      expect(receivedWorktreePath).toBeTruthy();
+      expect(summary.status).toBe("success");
+      expect(summary.results[0].status).toBe("merged");
+    },
+    30000,
+  );
+
+  it(
+    "should prefer onConflict over resolveConflict when both are set",
+    async () => {
+      cleanupWorkspace();
+
+      // Create real conflict
+      const baseCommit = await execGit(["rev-parse", "HEAD"], { cwd: repo.cwd });
+      fs.writeFileSync(path.join(repo.cwd, "README.md"), "# Trunk priority test\n");
+      await execGit(["add", "README.md"], { cwd: repo.cwd });
+      await execGit(["commit", "-m", "trunk changes readme"], { cwd: repo.cwd });
+
+      let onConflictCalled = false;
+      let resolveConflictCalled = false;
+
+      const session = await gitmesh({
+        cwd: repo.cwd,
+        workspaceDir,
+        agents: [
+          {
+            name: "priority-test",
+            baseRef: baseCommit,
+            onReady: async (signal: AgentWorkDoneSignal) => {
+              const fp = path.join(signal.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Agent priority test\n");
+              await execGit(["add", "README.md"], { cwd: signal.worktreePath });
+              await execGit(["commit", "-m", "agent changes"], {
+                cwd: signal.worktreePath,
+              });
+              signal.done();
+            },
+            // Both are set — onConflict should win (highest priority)
+            onConflict: async (conflict: ConflictInfo): Promise<ResolutionResult> => {
+              onConflictCalled = true;
+              // Resolve the conflict
+              const fp = path.join(conflict.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Resolved priority\n");
+              return { resolved: true };
+            },
+            resolveConflict: async () => {
+              resolveConflictCalled = true;
+            },
+          },
+        ],
+        strategy: "rebase-first",
+        maxRetries: 3,
+      });
+
+      await session.done();
+      expect(onConflictCalled).toBe(true);
+      expect(resolveConflictCalled).toBe(false);
+    },
+    30000,
+  );
+
+  it(
+    "should fail when resolveConflict throws an error",
+    async () => {
+      cleanupWorkspace();
+
+      const baseCommit = await execGit(["rev-parse", "HEAD"], { cwd: repo.cwd });
+      fs.writeFileSync(path.join(repo.cwd, "README.md"), "# Trunk error test\n");
+      await execGit(["add", "README.md"], { cwd: repo.cwd });
+      await execGit(["commit", "-m", "trunk changes readme"], { cwd: repo.cwd });
+
+      const session = await gitmesh({
+        cwd: repo.cwd,
+        workspaceDir,
+        agents: [
+          {
+            name: "throw-test",
+            baseRef: baseCommit,
+            onReady: async (signal: AgentWorkDoneSignal) => {
+              const fp = path.join(signal.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Agent error test\n");
+              await execGit(["add", "README.md"], { cwd: signal.worktreePath });
+              await execGit(["commit", "-m", "agent changes"], {
+                cwd: signal.worktreePath,
+              });
+              signal.done();
+            },
+            resolveConflict: async () => {
+              throw new Error("agent crashed during conflict resolution");
+            },
+          },
+        ],
+        strategy: "rebase-first",
+        maxRetries: 1,
+      });
+
+      const summary = await session.done();
+      expect(summary.results[0].status).toBe("failed");
+      expect(summary.results[0].reason).toContain("agent crashed");
+    },
+    30000,
+  );
+
+  it(
+    "should pass structured conflict info alongside prompt",
+    async () => {
+      cleanupWorkspace();
+
+      const baseCommit = await execGit(["rev-parse", "HEAD"], { cwd: repo.cwd });
+      fs.writeFileSync(path.join(repo.cwd, "README.md"), "# Trunk struct test\n");
+      await execGit(["add", "README.md"], { cwd: repo.cwd });
+      await execGit(["commit", "-m", "trunk changes readme"], { cwd: repo.cwd });
+
+      let capturedConflict: ConflictInfo | null = null;
+      let verifyPrompt = "";
+
+      const session = await gitmesh({
+        cwd: repo.cwd,
+        workspaceDir,
+        agents: [
+          {
+            name: "struct-test",
+            baseRef: baseCommit,
+            onReady: async (signal: AgentWorkDoneSignal) => {
+              const fp = path.join(signal.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Agent struct test\n");
+              await execGit(["add", "README.md"], { cwd: signal.worktreePath });
+              await execGit(["commit", "-m", "agent changes"], {
+                cwd: signal.worktreePath,
+              });
+              signal.done();
+            },
+            resolveConflict: async (params: ConflictResolutionParams) => {
+              capturedConflict = params.conflict;
+              verifyPrompt = params.prompt;
+
+              // Resolve
+              const fp = path.join(params.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Resolved struct\n");
+
+              // Verify the prompt was generated from the same conflict data
+              const regenerated = buildConflictPrompt(params.conflict);
+              expect(verifyPrompt).toBe(regenerated);
+            },
+          },
+        ],
+        strategy: "rebase-first",
+        maxRetries: 3,
+      });
+
+      await session.done();
+
+      expect(capturedConflict).not.toBeNull();
+      expect(capturedConflict!.agentName).toBe("struct-test");
+      expect(capturedConflict!.files.length).toBeGreaterThan(0);
+      expect(capturedConflict!.attempt).toBeGreaterThan(0);
+      expect(capturedConflict!.worktreePath).toBeTruthy();
     },
     30000,
   );

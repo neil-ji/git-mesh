@@ -6,12 +6,121 @@
  * 2. 读取冲突内容（含 git 冲突标记）
  * 3. 生成 incoming/outgoing diff
  * 4. 构建完整的 ConflictInfo 结构
+ * 5. 构建人类/LLM 可读的冲突描述 prompt
  */
 
 import * as path from "path";
 import * as fs from "fs";
 import { execGit, execGitFull } from "./git";
-import type { ConflictFile, ConflictInfo } from "./types";
+import type { ConflictFile, ConflictInfo, ConflictPromptOptions } from "./types";
+
+// 默认 prompt 头部
+const DEFAULT_CONFLICT_HEADER = [
+  "你的分支在 rebase 到主干时产生了冲突。",
+  "",
+  "请在工作目录中编辑冲突文件，保留正确的合并结果：",
+  "- 删除冲突标记 <<<<<<< / ======= / >>>>>>>",
+  "- 确认最终内容是你期望的状态",
+  "- 完成后不需要执行 git add 或 git commit",
+  "",
+].join("\n");
+
+const DEFAULT_MAX_FILE_CONTENT = 8000;
+
+/**
+ * 检测冲突双方是否主要是追加新行（而非修改已有行）。
+ * 用于在 prompt 中给出合并提示。
+ */
+function detectAppendPattern(file: ConflictFile): boolean {
+  const outgoingLines = file.outgoingDiff
+    .split("\n")
+    .filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+  const incomingLines = file.incomingDiff
+    .split("\n")
+    .filter((l) => l.startsWith("+") && !l.startsWith("+++"));
+
+  // 两边的 diff 都只有新增行（没有删除行），则视为追加模式
+  const hasRemovals =
+    file.outgoingDiff.split("\n").some((l) => l.startsWith("-") && !l.startsWith("---")) ||
+    file.incomingDiff.split("\n").some((l) => l.startsWith("-") && !l.startsWith("---"));
+
+  return !hasRemovals && outgoingLines.length > 0 && incomingLines.length > 0;
+}
+
+/**
+ * 检查是否有任何冲突文件符合追加模式
+ */
+function anyAppendPattern(files: ConflictFile[]): boolean {
+  return files.some((f) => detectAppendPattern(f));
+}
+
+/**
+ * 将 ConflictInfo 翻译为人类/LLM 可读的冲突描述 prompt。
+ *
+ * 纯数据转换函数 — 不依赖任何 Agent SDK。
+ * 返回的字符串可直接作为 LLM prompt 或日志输出使用。
+ *
+ * @param conflict 冲突信息
+ * @param options  自定义选项
+ */
+export function buildConflictPrompt(
+  conflict: ConflictInfo,
+  options?: ConflictPromptOptions
+): string {
+  const maxLen = options?.maxFileContent ?? DEFAULT_MAX_FILE_CONTENT;
+  const includeHints = options?.hints !== false; // default true
+
+  // 头部
+  const header = options?.header ?? DEFAULT_CONFLICT_HEADER;
+
+  // 元信息
+  const meta = [
+    `**Agent:** \`${conflict.agentName}\``,
+    `**尝试次数:** ${conflict.attempt}/${conflict.maxRetries}`,
+    `**目标 commit:** \`${conflict.targetCommit.slice(0, 7)}\``,
+    `**工作目录:** \`${conflict.worktreePath}\``,
+  ].join("  \n");
+
+  // 策略提示
+  let hintSection = "";
+  if (includeHints && anyAppendPattern(conflict.files)) {
+    hintSection = [
+      "",
+      "> 💡 **提示：** 检测到冲突双方都是追加新内容（没有删除或修改已有行）。",
+      "> 你的任务是将两边的追加内容合并保留，去除冲突标记即可。",
+      "> 不需要二选一。",
+      "",
+    ].join("\n");
+  }
+
+  // 文件详情
+  const fileSections = conflict.files.map((f) => {
+    const truncated = f.content.length > maxLen
+      ? f.content.slice(0, maxLen) + `\n\n... (截断，原长度 ${f.content.length} 字符)`
+      : f.content;
+
+    return [
+      `### \`${f.path}\` (${f.status})`,
+      "",
+      "**你的改动 (outgoing):**",
+      "```diff",
+      f.outgoingDiff || "(无)",
+      "```",
+      "",
+      "**主干改动 (incoming):**",
+      "```diff",
+      f.incomingDiff || "(无)",
+      "```",
+      "",
+      "**冲突内容 (含标记):**",
+      "```",
+      truncated,
+      "```",
+    ].join("\n");
+  });
+
+  return [header, "", meta, hintSection, "---", "", ...fileSections].join("\n");
+}
 
 /**
  * 检测 worktree 中的冲突文件

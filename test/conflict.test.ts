@@ -9,7 +9,8 @@ import * as fs from "fs";
 import { createTempRepo, TempRepo, advanceTrunk, simulateAgentWork } from "./_helpers";
 import { createWorktree, removeWorktree } from "../src/worktree";
 import { execGit } from "../src/git";
-import { detectConflicts, hasConflicts } from "../src/conflict";
+import { detectConflicts, hasConflicts, buildConflictPrompt } from "../src/conflict";
+import type { ConflictInfo } from "../src/types";
 import { rebaseBranch, abortRebase } from "../src/rebase";
 
 let repo: TempRepo;
@@ -100,5 +101,120 @@ describe("Conflict Detection", () => {
 
     await abortRebase(wt.path);
     await removeWorktree("content-test", opts(), true);
+  });
+});
+
+describe("buildConflictPrompt", () => {
+  const baseConflict: ConflictInfo = {
+    agentName: "test-agent",
+    files: [
+      {
+        path: "src/app.ts",
+        status: "conflicted",
+        content: "<<<<<<< HEAD\nline from trunk\n=======\nline from agent\n>>>>>>> mesh/test-agent\n",
+        incomingDiff: "+line from trunk\n",
+        outgoingDiff: "+line from agent\n",
+      },
+    ],
+    attempt: 1,
+    maxRetries: 3,
+    targetCommit: "abc1234567890",
+    sourceCommit: "def9876543210",
+    worktreePath: "/tmp/gitmesh-workspaces/test-agent",
+  };
+
+  it("should include essential fields in default output", () => {
+    const prompt = buildConflictPrompt(baseConflict);
+    expect(prompt).toContain("test-agent");
+    expect(prompt).toContain("1/3");
+    expect(prompt).toContain("abc1234");
+    expect(prompt).toContain("src/app.ts");
+    expect(prompt).toContain("<<<<<<<");
+    expect(prompt).toContain(">>>>>>>");
+    expect(prompt).toContain("outgoing");
+    expect(prompt).toContain("incoming");
+  });
+
+  it("should use custom header when provided", () => {
+    const customHeader = "CUSTOM: resolve this please";
+    const prompt = buildConflictPrompt(baseConflict, { header: customHeader });
+    expect(prompt).toContain(customHeader);
+  });
+
+  it("should truncate file content when exceeding maxFileContent", () => {
+    const longContent = "x".repeat(100);
+    const conflict: ConflictInfo = {
+      ...baseConflict,
+      files: [{ ...baseConflict.files[0], content: longContent }],
+    };
+    const prompt = buildConflictPrompt(conflict, { maxFileContent: 50 });
+    expect(prompt).toContain("截断");
+    expect(prompt).not.toContain("x".repeat(60));
+  });
+
+  it("should include hints when both sides only append", () => {
+    const appendConflict: ConflictInfo = {
+      ...baseConflict,
+      files: [
+        {
+          ...baseConflict.files[0],
+          outgoingDiff: "+entry_1\n+entry_2\n",
+          incomingDiff: "+entry_3\n+entry_4\n",
+        },
+      ],
+    };
+    const prompt = buildConflictPrompt(appendConflict, { hints: true });
+    expect(prompt).toContain("💡");
+    expect(prompt).toContain("追加");
+  });
+
+  it("should suppress hints when hints: false", () => {
+    const appendConflict: ConflictInfo = {
+      ...baseConflict,
+      files: [
+        {
+          ...baseConflict.files[0],
+          outgoingDiff: "+entry_1\n",
+          incomingDiff: "+entry_2\n",
+        },
+      ],
+    };
+    const prompt = buildConflictPrompt(appendConflict, { hints: false });
+    expect(prompt).not.toContain("💡");
+  });
+
+  it("should not show hints when there are deletions", () => {
+    const modifyConflict: ConflictInfo = {
+      ...baseConflict,
+      files: [
+        {
+          ...baseConflict.files[0],
+          outgoingDiff: "+new line\n-old line\n",
+          incomingDiff: "+other line\n",
+        },
+      ],
+    };
+    const prompt = buildConflictPrompt(modifyConflict);
+    expect(prompt).not.toContain("💡");
+  });
+
+  it("should handle multiple files", () => {
+    const multiFile: ConflictInfo = {
+      ...baseConflict,
+      files: [
+        baseConflict.files[0],
+        {
+          path: "src/utils.ts",
+          status: "deleted-by-them",
+          content: "deleted content",
+          incomingDiff: "-deleted\n",
+          outgoingDiff: "+modified\n",
+        },
+      ],
+    };
+    const prompt = buildConflictPrompt(multiFile);
+    expect(prompt).toContain("src/app.ts");
+    expect(prompt).toContain("src/utils.ts");
+    expect(prompt).toContain("deleted-by-them");
   });
 });
