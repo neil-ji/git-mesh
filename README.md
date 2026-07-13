@@ -8,7 +8,8 @@
 <h1 align="center">gitmesh</h1>
 
 <p align="center">
-  <strong>多 Agent 并行编码的 Git 编排层</strong>
+  <strong>Git Worktree Orchestration for AI Coding Agents</strong><br>
+  <sub>多 Agent 并行编码的 Git 编排层</sub>
 </p>
 
 <p align="center">
@@ -27,6 +28,10 @@
 </p>
 
 ---
+
+**gitmesh** is a Git orchestration layer for parallel AI coding agents. It creates isolated git worktrees for each agent within a single repo, then automatically rebases and merges changes back to trunk. When conflicts arise, it routes them to the responsible agent with full context for resolution — retrying until all changes land cleanly.
+
+> **Not a CI system. Not an agent framework. Just git operations for multi-agent collaboration.**
 
 在单仓库内为多个 AI Agent 创建隔离的 git worktree，Agent 各自完成编码后，自动 rebase → merge 回主干。遇冲突时路由回对应 Agent 自行解决，循环直到全部合并成功。
 
@@ -71,7 +76,13 @@ const session = await gitmesh({
 const summary = await session.done();
 ```
 
-## 解决的问题
+## 解决的问题 / What gitmesh Solves
+
+| Pain Point | gitmesh Solution |
+|------------|-----------------|
+| Agents share a working directory, files get trampled | Isolated git worktrees per agent — no interference |
+| Unpredictable completion time, chaotic merge order | Rebase-First strategy — first-done-first-merged, no blocking |
+| Same-file conflicts with no one to resolve them | Auto-detect conflicts, route back to the responsible agent with full context |
 
 | 痛点 | gitmesh 怎么做 |
 |------|---------------|

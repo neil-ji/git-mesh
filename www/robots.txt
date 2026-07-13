@@ -1,0 +1,5 @@
+# https://neil-ji.github.io/git-mesh/
+User-agent: *
+Allow: /
+
+Sitemap: https://neil-ji.github.io/git-mesh/sitemap.xml

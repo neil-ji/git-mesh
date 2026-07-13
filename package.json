@@ -1,7 +1,7 @@
 {
   "name": "gitmesh",
   "version": "0.1.16",
-  "description": "Agent 并行编码时的 git 管道工 — 在单仓库内为多个 Agent 创建隔离 worktree，自动将变更合回主干",
+  "description": "Git worktree orchestration for parallel AI coding agents — isolated worktrees, auto rebase-merge, and smart conflict routing. 多 Agent 并行编码的 Git 编排层。",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "files": [
@@ -18,7 +18,20 @@
     "worktree",
     "agent",
     "merge",
-    "orchestration"
+    "orchestration",
+    "git-worktree",
+    "ai-agent",
+    "parallel",
+    "conflict-resolution",
+    "rebase",
+    "multi-agent",
+    "typescript",
+    "coding-agent",
+    "automation",
+    "git-workflow",
+    "agentic",
+    "ai-coding",
+    "merge-orchestration"
   ],
   "license": "MIT",
   "author": "neil-ji",

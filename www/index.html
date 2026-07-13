@@ -3,19 +3,77 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>gitmesh — 多 Agent 并行编码 git 冲突解决方案</title>
+<title>gitmesh — 多 Agent 并行编码 Git 冲突解决方案 | AI Agent Git 编排层</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
-<meta name="description" content="多 Agent 并行编码 git 冲突解决方案 — 在单仓库内为多个 AI Agent 创建隔离工作区，自动合并代码，智能路由冲突。">
+<meta name="description" content="gitmesh 是面向 AI Agent 并行编码的 Git 编排层 — 为多个 AI Agent 创建隔离 worktree，自动 rebase → merge 合回主干，智能路由冲突。MIT 开源，npm install gitmesh。">
+<meta name="keywords" content="gitmesh, git worktree, AI agent, 并行编码, git 合并, 冲突解决, 多 Agent 协作, git 编排, rebase-first, worktree 隔离, AI coding agent, git orchestration, merge orchestration">
+<meta name="author" content="neil-ji">
+<meta name="robots" content="index, follow, max-snippet:-1, max-image-preview:large, max-video-preview:-1">
+<link rel="canonical" href="https://neil-ji.github.io/git-mesh/">
+<link rel="alternate" hreflang="x-default" href="https://neil-ji.github.io/git-mesh/">
+
+<!-- Open Graph / Facebook -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://neil-ji.github.io/git-mesh/">
+<meta property="og:title" content="gitmesh — AI Agent 并行编码的 Git 编排层">
+<meta property="og:description" content="为多个 AI Agent 创建隔离 worktree，自动 rebase → merge 合回主干，智能路由冲突。MIT 开源。">
+<meta property="og:image" content="https://neil-ji.github.io/git-mesh/og-image.svg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="gitmesh — Git Orchestration for AI Agents. Isolated worktrees, auto merge, smart conflict routing.">
+<meta property="og:site_name" content="gitmesh">
+<meta property="og:locale" content="zh_CN">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://neil-ji.github.io/git-mesh/">
+<meta name="twitter:title" content="gitmesh — AI Agent 并行编码的 Git 编排层">
+<meta name="twitter:description" content="为多个 AI Agent 创建隔离 worktree，自动 rebase → merge 合回主干，智能路由冲突。MIT 开源。">
+<meta name="twitter:image" content="https://neil-ji.github.io/git-mesh/og-image.svg">
+<meta name="twitter:image:alt" content="gitmesh logo — git worktree orchestration for AI agents">
+
+<!-- JSON-LD Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "gitmesh",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux, macOS, Windows",
+  "description": "AI Agent 并行编码时的 Git 编排层 — 在单仓库内为多个 Agent 创建隔离 worktree，自动将变更合回主干。",
+  "url": "https://neil-ji.github.io/git-mesh/",
+  "author": {
+    "@type": "Person",
+    "name": "neil-ji",
+    "url": "https://github.com/neil-ji"
+  },
+  "license": "https://opensource.org/licenses/MIT",
+  "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+  },
+  "softwareVersion": "0.1.16",
+  "codeRepository": "https://github.com/neil-ji/git-mesh",
+  "downloadUrl": "https://www.npmjs.com/package/gitmesh",
+  "sameAs": [
+    "https://github.com/neil-ji/git-mesh",
+    "https://www.npmjs.com/package/gitmesh"
+  ],
+  "keywords": "git, worktree, agent, merge, orchestration, ai, parallel, rebase, conflict-resolution, typescript",
+  "inLanguage": ["zh-CN", "en"]
+}
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="landing.css">
 </head>
 <body>
 
+<main>
 <!-- NAV -->
 <nav class="nav" id="nav">
   <div class="container">
@@ -364,6 +422,11 @@
   </div>
 </footer>
 
+</main>
+
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+<script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 <script src="landing.js"></script>
 </body>
 </html>

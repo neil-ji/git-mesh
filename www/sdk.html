@@ -3,14 +3,77 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>gitmesh SDK 文档</title>
+<title>gitmesh SDK 文档 — AI Agent Git 编排层 API 参考 | 快速开始 · 合并策略 · 冲突解决</title>
 <link rel="icon" type="image/svg+xml" href="logo.svg">
-<meta name="description" content="gitmesh SDK 文档 — 多 Agent 并行编码 git 冲突解决方案的完整 API 参考和使用指南">
+<meta name="description" content="gitmesh SDK 完整 API 参考和使用指南 — 多 Agent 并行编码 git 冲突解决方案。覆盖快速开始、核心概念、Agent 协议、合并策略、冲突解决、事件系统和错误处理。">
+<meta name="keywords" content="gitmesh, gitmesh SDK, gitmesh API, git worktree, AI agent, 并行编码, git 合并, 冲突解决, Agent 协议, rebase-first, worktree 隔离, git orchestration, TypeScript">
+<meta name="robots" content="index, follow">
+<link rel="canonical" href="https://neil-ji.github.io/git-mesh/sdk.html">
+
+<!-- Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://neil-ji.github.io/git-mesh/sdk.html">
+<meta property="og:title" content="gitmesh SDK 文档 — AI Agent Git 编排层 API 参考">
+<meta property="og:description" content="完整 API 参考和使用指南 — 快速开始、Agent 协议、合并策略、冲突解决、事件系统和错误处理。">
+<meta property="og:image" content="https://neil-ji.github.io/git-mesh/og-image.svg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="gitmesh SDK documentation">
+<meta property="og:site_name" content="gitmesh">
+<meta property="og:locale" content="zh_CN">
+
+<!-- Twitter Card -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="https://neil-ji.github.io/git-mesh/sdk.html">
+<meta name="twitter:title" content="gitmesh SDK 文档 — AI Agent Git 编排层 API 参考">
+<meta name="twitter:description" content="完整 API 参考和使用指南 — 快速开始、Agent 协议、合并策略、冲突解决、事件系统。">
+<meta name="twitter:image" content="https://neil-ji.github.io/git-mesh/og-image.svg">
+<meta name="twitter:image:alt" content="gitmesh SDK documentation">
+
+<!-- JSON-LD Structured Data -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "gitmesh SDK",
+  "applicationCategory": "DeveloperApplication",
+  "operatingSystem": "Linux, macOS, Windows",
+  "description": "gitmesh SDK 完整 API 参考 — 多 Agent 并行编码 git 冲突解决方案。",
+  "url": "https://neil-ji.github.io/git-mesh/sdk.html",
+  "author": {
+    "@type": "Person",
+    "name": "neil-ji",
+    "url": "https://github.com/neil-ji"
+  },
+  "license": "https://opensource.org/licenses/MIT",
+  "codeRepository": "https://github.com/neil-ji/git-mesh"
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "gitmesh",
+      "item": "https://neil-ji.github.io/git-mesh/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "SDK 文档",
+      "item": "https://neil-ji.github.io/git-mesh/sdk.html"
+    }
+  ]
+}
+</script>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:opsz,wght@14..32,400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:opsz,wght@14..32,400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:opsz,wght@14..32,400..600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="sdk.css">
 </head>
 <body>
@@ -79,6 +142,8 @@
 
 </div>
 
+<script defer src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <script src="sdk.js"></script>
 </body>
 </html>
