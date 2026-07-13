@@ -240,7 +240,7 @@ describe("Merge Engine — Conflict & Retry", () => {
       events.push(`retry:${name}:${attempt}`)
     );
     engine.on("mesh:merged", (name: string) => events.push(`merged:${name}`));
-    engine.on("mesh:failed", (name: string, reason: string) =>
+    engine.on("mesh:failed", (name: string, reason: string, worktreePath: string) =>
       events.push(`failed:${name}`)
     );
 

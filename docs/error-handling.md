@@ -105,8 +105,9 @@ class StrategyError extends MergeEngineError {
 ```typescript
 import { RebaseError, MergeError } from "gitmesh";
 
-session.on("mesh:failed", (name, reason) => {
+session.on("mesh:failed", (name, reason, worktreePath) => {
   // reason 是字符串，包含错误描述
+  // worktreePath 是失败 worktree 的路径，gitmesh 有意保留它用于审计
   console.error(`${name} 失败: ${reason}`);
 });
 
@@ -149,7 +150,7 @@ class AgentAbandonError extends AgentError {
 ```typescript
 import { AgentTimeoutError, AgentAbandonError } from "gitmesh";
 
-session.on("mesh:failed", (name, reason) => {
+session.on("mesh:failed", (name, reason, worktreePath) => {
   console.error(`${name} 失败: ${reason}`);
   // "Agent 放弃解决冲突: 需要人工介入"
   // "冲突解决超时 (600s)"
@@ -217,7 +218,7 @@ Session 启动后的错误通过事件和 `SessionSummary` 暴露，不会 throw
 const session = await gitmesh({ agents: [...] });
 
 // 方式 1：通过事件
-session.on("mesh:failed", (name, reason) => {
+session.on("mesh:failed", (name, reason, worktreePath) => {
   console.error(`${name}: ${reason}`);
 });
 
@@ -278,9 +279,9 @@ await session.abort();
 ### 1. 始终监听 mesh:failed
 
 ```typescript
-session.on("mesh:failed", (name, reason) => {
-  // 记录失败信息，用于后续排查
-  logger.error({ agent: name, reason }, "Agent 合并失败");
+session.on("mesh:failed", (name, reason, worktreePath) => {
+  // 记录失败信息（含 worktree 路径），用于后续排查
+  logger.error({ agent: name, reason, worktreePath }, "Agent 合并失败");
 });
 ```
 

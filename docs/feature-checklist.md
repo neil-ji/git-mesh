@@ -57,7 +57,7 @@
 - [x] `session.done()` — 等待全部完成，返回结果摘要
 - [x] `session.abort()` — 中断 session，清理所有 worktree
 - [x] **SessionSummary** — 整体状态 + 每个 Agent 的详细结果
-- [x] **AgentResult** — 合并状态、commit hash、失败原因、清理状态
+- [x] **AgentResult** — 合并状态、commit hash、失败原因、worktree 路径、清理状态
 
 ## 配置选项
 

@@ -105,11 +105,12 @@ const session = await gitmesh({
     mergedFiles.add(name);
     console.log(`${name} 合并了:`, commit);
   },
-  onFailed: (name, reason) => {
+  onFailed: (name, reason, worktreePath) => {
     if (reason.includes("conflict")) {
       console.log(`${name} 因冲突失败，启动补偿 Agent...`);
       // 注意：此时 session 仍在运行，不能在同一 session 中新增 Agent
       // 但可以记录信息，在外层处理
+      // worktreePath 包含 Agent 的完整工作产物，可用于审计
     }
   },
   onDone: (summary) => {
@@ -260,7 +261,7 @@ function attachMetrics(session: Session): SessionMetrics {
     m.mergeCount++;
   });
 
-  session.on("mesh:failed", (name) => {
+  session.on("mesh:failed", (name, reason, worktreePath) => {
     const t = m.agentTimings.get(name);
     if (t) t.end = Date.now();
     m.failCount++;
@@ -296,7 +297,7 @@ async function monitoredSession(tasks) {
     onMerged: (name) => {
       console.log(`${name} 合并完成`);
     },
-    onFailed: (name, reason) => {
+    onFailed: (name, reason, worktreePath) => {
       console.log(`${name} 失败: ${reason}`);
     },
     onDone: (summary) => {
@@ -325,7 +326,7 @@ async function ciPipeline(tasks: AgentTask[]) {
     maxRetries: 2,
     conflictTimeout: 300_000, // CI 环境设置更短的超时
     // 使用构造函数回调代替 session.on()
-    onFailed: (name, reason) => {
+    onFailed: (name, reason, worktreePath) => {
       hasFailures = true;
       // CI 日志格式
       console.log(`::error title=gitmesh::${name} 合并失败: ${reason}`);

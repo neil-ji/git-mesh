@@ -12,7 +12,7 @@ type SessionEvents = {
   "mesh:conflict": (info: ConflictInfo) => void;
   "mesh:retry": (name: string, attempt: number) => void;
   "mesh:merged": (name: string, commit: string) => void;
-  "mesh:failed": (name: string, reason: string) => void;
+  "mesh:failed": (name: string, reason: string, worktreePath: string) => void;
   "session:done": (summary: SessionSummary) => void;
 };
 ```
@@ -106,13 +106,14 @@ session.on("mesh:merged", (name: string, commit: string) => {
 Agent 合并失败。
 
 ```typescript
-session.on("mesh:failed", (name: string, reason: string) => {
+session.on("mesh:failed", (name: string, reason: string, worktreePath: string) => {
   console.log(`[${name}] ❌ 合并失败: ${reason}`);
   // reason 可能是:
   //   "Agent 放弃解决冲突: 需要人工介入"
   //   "重试次数耗尽（3/3）"
   //   "冲突解决超时"
   //   "rebase 失败: <git error>"
+  // worktreePath 是失败 worktree 的路径，gitmesh 有意保留它用于审计
 });
 ```
 
@@ -183,8 +184,8 @@ session.on("mesh:merged", async (name, commit) => {
   await sendSlackMessage(`✅ ${name} 已合并`);
 });
 
-session.on("mesh:failed", async (name, reason) => {
-  await sendSlackMessage(`❌ ${name} 合并失败: ${reason}`);
+session.on("mesh:failed", async (name, reason, worktreePath) => {
+  await sendSlackMessage(`❌ ${name} 合并失败: ${reason}\nWorktree 保留于: ${worktreePath}`);
 });
 
 session.on("mesh:conflict", async (info) => {
@@ -205,8 +206,8 @@ session.on("worktree:ready", (info) =>
 session.on("mesh:merged", (name, commit) =>
   log.write(`${Date.now()} mesh:merged ${name} ${commit}\n`));
 
-session.on("mesh:failed", (name, reason) =>
-  log.write(`${Date.now()} mesh:failed ${name} ${reason}\n`));
+session.on("mesh:failed", (name, reason, worktreePath) =>
+  log.write(`${Date.now()} mesh:failed ${name} ${reason} ${worktreePath}\n`));
 
 session.on("session:done", () => log.end());
 ```

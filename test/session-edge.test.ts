@@ -265,7 +265,7 @@ describe("Session Edge Cases", () => {
               }),
             },
           ],
-          onFailed: (name: string) => {
+          onFailed: (name: string, reason: string, worktreePath: string) => {
             failedEvents.push(name);
           },
           onDone: () => {

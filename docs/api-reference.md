@@ -26,7 +26,7 @@ function gitmesh(options: GitmeshOptions): Promise<Session>;
 | `branchPrefix` | `string` | 否 | `"mesh/"` | Agent 分支名前缀 |
 | `workspaceDir` | `string` | 否 | `"../.gitmesh-workspaces"` | worktree 存储目录。相对于 `cwd` 解析为绝对路径。每个 Agent 的 worktree 路径为 `{workspaceDir}/{agentName}`。默认为仓库父目录下的 `.gitmesh-workspaces/` |
 | `onMerged` | `(name: string, commit: string) => void` | 否 | — | Agent 合并成功回调 |
-| `onFailed` | `(name: string, reason: string) => void` | 否 | — | Agent 合并失败回调 |
+| `onFailed` | `(name: string, reason: string, worktreePath: string) => void` | 否 | — | Agent 合并失败回调 |
 | `onConflict` | `(info: ConflictInfo) => void` | 否 | — | 冲突通知回调 |
 | `onDone` | `(summary: SessionSummary) => void` | 否 | — | Session 结束回调 |
 
@@ -57,7 +57,7 @@ const session = await gitmesh({
   onMerged: (name, commit) => {
     console.log(`${name} 已合并: ${commit}`);
   },
-  onFailed: (name, reason) => {
+  onFailed: (name, reason, worktreePath) => {
     console.log(`${name} 失败: ${reason}`);
   },
   onDone: (summary) => {
@@ -91,7 +91,7 @@ interface GitmeshOptions {
   /** Agent 合并成功时调用 */
   onMerged?: (name: string, commit: string) => void;
   /** Agent 合并失败时调用 */
-  onFailed?: (name: string, reason: string) => void;
+  onFailed?: (name: string, reason: string, worktreePath: string) => void;
   /** 发生冲突时调用 */
   onConflict?: (info: ConflictInfo) => void;
   /** Session 结束时调用 */
@@ -213,6 +213,8 @@ interface AgentResult {
   mergeCommit?: string;
   /** 失败原因（仅 failed/abandoned 时有值） */
   reason?: string;
+  /** worktree 所在路径 */
+  worktreePath: string;
   /** worktree 是否已清理 */
   cleaned: boolean;
 }
@@ -321,7 +323,7 @@ type SessionEvents = {
   "mesh:conflict": (info: ConflictInfo) => void;
   "mesh:retry": (name: string, attempt: number) => void;
   "mesh:merged": (name: string, commit: string) => void;
-  "mesh:failed": (name: string, reason: string) => void;
+  "mesh:failed": (name: string, reason: string, worktreePath: string) => void;
   "session:done": (summary: SessionSummary) => void;
 };
 ```

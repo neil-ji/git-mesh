@@ -72,7 +72,7 @@ export {
  *   ],
  *   strategy: "rebase-first",
  *   onMerged: (name, commit) => console.log(`${name} merged: ${commit}`),
- *   onFailed: (name, reason) => console.error(`${name} failed: ${reason}`),
+ *   onFailed: (name, reason, worktreePath) => console.error(`${name} failed: ${reason}`),
  * });
  *
  * const summary = await session.done();

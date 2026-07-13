@@ -121,8 +121,8 @@ export class SessionImpl
     });
 
     // mesh:failed — 触发事件 + reject/resolve 对应的 signal.done() Promise
-    this.engine.on("mesh:failed", (name: string, reason: string) => {
-      this.emit("mesh:failed", name, reason);
+    this.engine.on("mesh:failed", (name: string, reason: string, worktreePath: string) => {
+      this.emit("mesh:failed", name, reason, worktreePath);
       const d = this.agentDeferreds.get(name);
       if (d) {
         d.resolve(false);
@@ -194,7 +194,7 @@ export class SessionImpl
     const worktreeInfo = this.worktrees.get(agent.name);
     if (!worktreeInfo) {
       const reason = `Worktree not found for agent "${agent.name}"`;
-      this.emit("mesh:failed", agent.name, reason);
+      this.emit("mesh:failed", agent.name, reason, "");
       this.engine.markFailed(agent.name, reason);
       return;
     }
@@ -212,7 +212,7 @@ export class SessionImpl
 
     // Agent 失败时的统一处理：emit 事件 + resolve deferred + 通知引擎
     const handleAgentError = (agentName: string, error: Error) => {
-      this.emit("mesh:failed", agentName, error.message);
+      this.emit("mesh:failed", agentName, error.message, worktreeInfo.path);
       const d = this.agentDeferreds.get(agentName);
       if (d) {
         d.resolve(false);

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.16] - 2026-07-13
+
+_API: worktreePath 审计增强。_
+
+- feat: `AgentResult` 新增 `worktreePath` 字段，`onDone` 回调中直接拿到每个 agent 的 worktree 路径
+- feat: `mesh:failed` 事件和 `onFailed` 回调新增第三个参数 `worktreePath`，调用方无需手动维护 name→path 映射
+- 调用方只需监听 `onDone`，从 `SessionSummary.results` 即可获得完整审计信息（路径 + 清理状态）
+
 ## [0.1.15] - 2026-07-13
 
 _生命周期可靠性修复。_

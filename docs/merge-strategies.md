@@ -132,7 +132,7 @@ interface MergeStrategy {
   /** 某个 Agent 合并后通知策略 */
   onMerged(agentName: string, commit: string): void;
   /** 某个 Agent 失败后通知策略 */
-  onFailed(agentName: string, reason: string): void;
+  onFailed(agentName: string, reason: string, worktreePath: string): void;
 }
 ```
 

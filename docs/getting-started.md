@@ -52,7 +52,7 @@ const session = await gitmesh({
   onMerged: (name, commit) => {
     console.log(`${name} 已合并，commit: ${commit.slice(0, 7)}`);
   },
-  onFailed: (name, reason) => {
+  onFailed: (name, reason, worktreePath) => {
     console.log(`${name} 合并失败: ${reason}`);
   },
   onDone: (summary) => {
@@ -87,7 +87,7 @@ const session = await gitmesh({
   onMerged: (name, commit) => {
     console.log(`✅ ${name} 已合并，commit: ${commit.slice(0, 7)}`);
   },
-  onFailed: (name, reason) => {
+  onFailed: (name, reason, worktreePath) => {
     console.log(`❌ ${name} 合并失败: ${reason}`);
   },
   onConflict: (info) => {
@@ -110,7 +110,7 @@ session.on("mesh:merged", (name, commit) => {
   console.log(`✅ ${name} 已合并，commit: ${commit.slice(0, 7)}`);
 });
 
-session.on("mesh:failed", (name, reason) => {
+session.on("mesh:failed", (name, reason, worktreePath) => {
   console.log(`❌ ${name} 合并失败: ${reason}`);
 });
 

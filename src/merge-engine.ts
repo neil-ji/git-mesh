@@ -127,6 +127,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
         agentName,
         status: "failed",
         reason,
+        worktreePath: "",
         cleaned: false,
       },
     };
@@ -181,6 +182,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
           agentName: entry.item.agentName,
           status: "failed" as const,
           reason: "Session aborted",
+          worktreePath: entry.item.worktreePath,
           cleaned: false,
         }
     );
@@ -203,6 +205,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
           agentName: entry.item.agentName,
           status: "failed",
           reason: "Session aborted",
+          worktreePath: entry.item.worktreePath,
           cleaned: false,
         };
       }
@@ -217,6 +220,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
             agentName: entry.item.agentName,
             status: "failed" as const,
             reason: "Session aborted",
+            worktreePath: entry.item.worktreePath,
             cleaned: false,
           }
       );
@@ -433,6 +437,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
         agentName: item.agentName,
         status: "merged",
         mergeCommit: newHead,
+        worktreePath: item.worktreePath,
         cleaned: false,
       };
 
@@ -511,10 +516,11 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
       agentName: entry.item.agentName,
       status: "failed",
       reason,
+      worktreePath: entry.item.worktreePath,
       cleaned: false,
     };
 
-    this.emit("mesh:failed", entry.item.agentName, reason);
+    this.emit("mesh:failed", entry.item.agentName, reason, entry.item.worktreePath);
     this.checkAllDone();
   }
 
@@ -542,6 +548,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
             agentName: entry.item.agentName,
             status: "failed",
             reason: "Unknown error",
+            worktreePath: entry.item.worktreePath,
             cleaned: false,
           }
         );

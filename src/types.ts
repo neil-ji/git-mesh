@@ -22,7 +22,7 @@ export interface GitmeshOptions {
   /** Agent 成功合并回调，免去事件注册的时序问题 */
   onMerged?: (name: string, commit: string) => void;
   /** Agent 合并失败回调 */
-  onFailed?: (name: string, reason: string) => void;
+  onFailed?: (name: string, reason: string, worktreePath: string) => void;
   /** 检测到冲突时回调 */
   onConflict?: (info: ConflictInfo) => void;
   /** Session 完成回调 */
@@ -85,6 +85,8 @@ export interface AgentResult {
   mergeCommit?: string;
   /** 失败原因（仅 failed/abandoned 时有值） */
   reason?: string;
+  /** worktree 所在路径 */
+  worktreePath: string;
   /** worktree 是否已清理 */
   cleaned: boolean;
 }
@@ -157,7 +159,7 @@ export type SessionEvents = {
   "mesh:conflict": (info: ConflictInfo) => void;
   "mesh:retry": (name: string, attempt: number) => void;
   "mesh:merged": (name: string, commit: string) => void;
-  "mesh:failed": (name: string, reason: string) => void;
+  "mesh:failed": (name: string, reason: string, worktreePath: string) => void;
   "session:done": (summary: SessionSummary) => void;
 };
 

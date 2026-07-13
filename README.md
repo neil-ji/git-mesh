@@ -62,7 +62,7 @@ const session = await gitmesh({
   ],
   // 构造函数回调避免了 session.on() 的时序竞争
   onMerged: (name, commit) => console.log(`✅ ${name} → ${commit.slice(0, 7)}`),
-  onFailed: (name, reason) => console.error(`${name} failed: ${reason}`),
+  onFailed: (name, reason, worktreePath) => console.error(`${name} failed: ${reason}`),
 });
 
 // signal.done() 返回 Promise<boolean>:
@@ -114,7 +114,7 @@ const summary = await session.done();
 | `cwd` | `string` | `process.cwd()` | 仓库路径 |
 | `trunkBranch` | `string` | `"main"` | 主干分支名 |
 | `onMerged` | `(name: string, commit: string) => void` | — | Agent 成功合并回调，免去事件注册的时序问题 |
-| `onFailed` | `(name: string, reason: string) => void` | — | Agent 合并失败回调 |
+| `onFailed` | `(name: string, reason: string, worktreePath: string) => void` | — | Agent 合并失败回调 |
 | `onConflict` | `(info: ConflictInfo) => void` | — | 检测到冲突时回调 |
 | `onDone` | `(summary: SessionSummary) => void` | — | Session 完成回调 |
 
