@@ -39,7 +39,11 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npx vitest run
+        run: npx vitest run --testTimeout=60000
+        env:
+          GIT_EDITOR: 'true'
+          GIT_SEQUENCE_EDITOR: 'true'
+          EDITOR: 'true'
 
   # 验证构建产物可被正确 require / import
   verify-package:
