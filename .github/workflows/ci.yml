@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ['v*']
   pull_request:
     branches: [main]
 
@@ -45,7 +46,6 @@ jobs:
           GIT_SEQUENCE_EDITOR: 'true'
           EDITOR: 'true'
 
-  # 验证构建产物可被正确 require / import
   verify-package:
     name: Verify package integrity
     runs-on: ubuntu-latest
@@ -73,3 +73,29 @@ jobs:
           npm pack --dry-run 2>&1 | tee pack-output.txt
           grep -q 'index.js' pack-output.txt
           grep -q 'index.d.ts' pack-output.txt
+
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, verify-package]
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Upgrade npm for OIDC
+        run: npm install -g npm@latest
+
+      - run: npm run build
+
+      - name: Publish
+        run: npm publish --provenance

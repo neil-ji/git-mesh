@@ -48,6 +48,7 @@ CD pipeline 流程：`tag push → npm ci → tsc --noEmit → vitest run → np
 
 | Pipeline | 触发条件 | 做什么 |
 |----------|---------|--------|
-| `ci.yml` | push main / PR | 矩阵测试 (Node 18/20/22 × ubuntu/macos) |
+| `ci.yml` | push main / PR / tag `v*` | 矩阵测试 + tag 时自动发布 npm |
 | `pages.yml` | push main, docs/ 或 www/ 变更 | 部署 `_site/` 到 GitHub Pages |
-| `publish.yml` | push tag `v*` | 测试 → npm publish (OIDC) |
+
+**发布流程**：push tag → CI 矩阵测试通过 → `publish` job 发布 npm。CI 不通过则发布不触发。
