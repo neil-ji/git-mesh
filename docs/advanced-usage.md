@@ -17,12 +17,11 @@ async function runBatch(tasks: AgentTask[]) {
     cwd: "/path/to/repo",
     agents: tasks.map((task) => ({
       name: task.name,
-      onReady: async (signal) => {
-        await runClaudeAgent({
+      onReady: (signal) => {
+        runClaudeAgent({
           prompt: task.prompt,
           cwd: signal.worktreePath,
-        });
-        signal.done();
+        }).then(() => signal.done());
       },
       onConflict: async (conflict) => {
         return runClaudeAgent({
@@ -59,12 +58,11 @@ function createAgent(config: {
   return {
     name: config.name,
     baseRef: config.baseRef,
-    onReady: async (signal) => {
-      await runClaudeAgent({
+    onReady: (signal) => {
+      runClaudeAgent({
         prompt: config.workPrompt,
         cwd: signal.worktreePath,
-      });
-      signal.done();
+      }).then(() => signal.done());
     },
     onConflict: async (conflict) => {
       const prompt = config.conflictPrompt ??
@@ -95,37 +93,36 @@ const agents = [
 
 ## 多 Agent 协同
 
-利用事件系统实现 Agent 间的协同：
+利用构造函数回调和事件系统实现 Agent 间的协同：
 
 ```typescript
 const mergedFiles = new Set<string>();
 
-session.on("mesh:merged", (name, commit) => {
-  // 记录每个 Agent 合并的文件
-  console.log(`${name} 合并了:`, commit);
+const session = await gitmesh({
+  agents: [...],
+  // 使用构造函数回调监控进度
+  onMerged: (name, commit) => {
+    mergedFiles.add(name);
+    console.log(`${name} 合并了:`, commit);
+  },
+  onFailed: (name, reason) => {
+    if (reason.includes("conflict")) {
+      console.log(`${name} 因冲突失败，启动补偿 Agent...`);
+      // 注意：此时 session 仍在运行，不能在同一 session 中新增 Agent
+      // 但可以记录信息，在外层处理
+    }
+  },
+  onDone: (summary) => {
+    // 根据结果启动第二轮
+    if (summary.status === "partial") {
+      const failed = summary.results
+        .filter(r => r.status !== "merged")
+        .map(r => r.agentName);
+      console.log(`失败的 Agent: ${failed.join(", ")}`);
+      // 可以在这里启动新的 session 重试失败的 Agent
+    }
+  },
 });
-
-session.on("mesh:failed", async (name, reason) => {
-  // 某个 Agent 失败后，可以启动补偿 Agent
-  if (reason.includes("conflict")) {
-    console.log(`${name} 因冲突失败，启动补偿 Agent...`);
-
-    // 注意：此时 session 仍在运行，不能在同一 session 中新增 Agent
-    // 但可以记录信息，在外层处理
-  }
-});
-
-const summary = await session.done();
-
-// 根据结果启动第二轮
-if (summary.status === "partial") {
-  const failed = summary.results
-    .filter(r => r.status !== "merged")
-    .map(r => r.agentName);
-
-  console.log(`失败的 Agent: ${failed.join(", ")}`);
-  // 可以在这里启动新的 session 重试失败的 Agent
-}
 ```
 
 ## 批量重试
@@ -145,12 +142,11 @@ async function runWithRetry(
       cwd: "/path/to/repo",
       agents: remaining.map((task) => ({
         name: task.name,
-        onReady: async (signal) => {
-          await runClaudeAgent({
+        onReady: (signal) => {
+          runClaudeAgent({
             prompt: task.prompt,
             cwd: signal.worktreePath,
-          });
-          signal.done();
+          }).then(() => signal.done());
         },
         onConflict: async (conflict) => {
           const ok = await runClaudeAgent({

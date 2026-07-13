@@ -50,21 +50,24 @@ const session = await gitmesh({
   agents: [
     {
       name: "fix-auth",
-      onReady: async (signal) => {
-        await runClaudeAgent({ cwd: signal.worktreePath });
-        signal.done();
+      // onReady 是 fire-and-forget —— gitmesh 不等待它返回。
+      // Agent 生命周期以 signal.done() 为准。
+      onReady: (signal) => {
+        runClaudeAgent({ cwd: signal.worktreePath }).then(() => signal.done());
       },
       onConflict: async (conflict) => {
         return runConflictResolver(conflict);
       },
     },
   ],
+  // 构造函数回调避免了 session.on() 的时序竞争
+  onMerged: (name, commit) => console.log(`✅ ${name} → ${commit.slice(0, 7)}`),
+  onFailed: (name, reason) => console.error(`${name} failed: ${reason}`),
 });
 
-session.on("mesh:merged", (name, commit) => {
-  console.log(`✅ ${name} → ${commit.slice(0, 7)}`);
-});
-
+// signal.done() 返回 Promise<boolean>:
+//   true  = 成功合入主干
+//   false = 合并失败（冲突无解、重试耗尽等）
 const summary = await session.done();
 ```
 
@@ -93,10 +96,10 @@ const summary = await session.done();
                    主干更新
 ```
 
-- **[Agent 协议](https://neil-ji.github.io/git-mesh/sdk.html#agent-protocol)** — 两个信号：`onReady`（干活）+ `onConflict`（解决冲突），协议无关实现
+- **[Agent 协议](https://neil-ji.github.io/git-mesh/sdk.html#agent-protocol)** — 两个信号：`onReady`（fire-and-forget，`signal.done()` 为生命周期锚点） + `onConflict`（解决冲突），协议无关实现
 - **[Rebase-First 合并](https://neil-ji.github.io/git-mesh/sdk.html#merge-strategies)** — 线性 git 历史，冲突在 worktree 内解决，不污染主干
 - **[冲突路由](https://neil-ji.github.io/git-mesh/sdk.html#conflict-resolution)** — 检测 → 通知 Agent → 解决 → 重试，循环直到成功或超限
-- **[事件系统](https://neil-ji.github.io/git-mesh/sdk.html#events)** — 8 个 typed 事件覆盖从 worktree 创建到合并完成的全流程
+- **[事件系统](https://neil-ji.github.io/git-mesh/sdk.html#events)** — 8 个 typed 事件覆盖从 worktree 创建到合并完成的全流程；也可通过构造函数 `onMerged` / `onFailed` / `onConflict` / `onDone` 回调监听，免去事件注册的时序问题
 
 ## API 概览
 
@@ -110,19 +113,35 @@ const summary = await session.done();
 | `conflictTimeout` | `number` | `600_000` | 冲突解决超时 (ms) |
 | `cwd` | `string` | `process.cwd()` | 仓库路径 |
 | `trunkBranch` | `string` | `"main"` | 主干分支名 |
+| `onMerged` | `(name: string, commit: string) => void` | — | Agent 成功合并回调，免去事件注册的时序问题 |
+| `onFailed` | `(name: string, reason: string) => void` | — | Agent 合并失败回调 |
+| `onConflict` | `(info: ConflictInfo) => void` | — | 检测到冲突时回调 |
+| `onDone` | `(summary: SessionSummary) => void` | — | Session 完成回调 |
 
 ### AgentDefinition
 
 ```typescript
 interface AgentDefinition {
-  name: string;                                             // 唯一名称
-  baseRef?: string;                                         // worktree 起点 ref
-  onReady: (signal: AgentWorkDoneSignal) => Promise<void>;  // 工作就绪回调
+  name: string;                                                  // 唯一名称
+  baseRef?: string;                                              // worktree 起点 ref
+  onReady: (signal: AgentWorkDoneSignal) => void | Promise<void>;// fire-and-forget，以 signal.done() 为生命周期锚点
   onConflict: (info: ConflictInfo) => Promise<ResolutionResult>; // 冲突解决回调
 }
 ```
 
+### AgentWorkDoneSignal
+
+```typescript
+interface AgentWorkDoneSignal {
+  agentName: string;
+  worktreePath: string;
+  done: () => Promise<boolean>; // true = 成功合入主干，false = 合并失败
+}
+```
+
 ### Session 事件
+
+高频通知（`mesh:merged`、`mesh:failed`、`mesh:conflict`、`session:done`）推荐通过构造函数 `onMerged` / `onFailed` / `onConflict` / `onDone` 回调注册，避免时序竞争。事件系统仍可用于其他场景：
 
 | 事件 | 说明 |
 |------|------|

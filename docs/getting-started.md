@@ -26,29 +26,38 @@ const session = await gitmesh({
   agents: [
     {
       name: "fix-auth",
-      onReady: async (signal) => {
-        // Agent 在 signal.worktreePath 中工作
-        // 这里可以是 Claude SDK、shell 脚本、或任何其他 Agent 实现
+      // onReady 是 fire-and-forget：启动 Agent 后立即返回
+      onReady: (signal) => {
         console.log(`Agent 工作区: ${signal.worktreePath}`);
-        signal.done(); // 通知 gitmesh：我完成了，可以合并
+        // Agent 完成时调用 signal.done() 通知 gitmesh
+        runAgent().then(() => signal.done());
       },
       onConflict: async (conflict) => {
-        // 冲突时由 Agent 自行解决
         console.log(`发现 ${conflict.files.length} 个冲突文件`);
         return { resolved: true };
       },
     },
     {
       name: "refactor-db",
-      onReady: async (signal) => {
+      onReady: (signal) => {
         console.log(`Agent 工作区: ${signal.worktreePath}`);
-        signal.done();
+        runAgent().then(() => signal.done());
       },
       onConflict: async (conflict) => {
         return { resolved: true };
       },
     },
   ],
+  // 通过构造函数回调监听进度
+  onMerged: (name, commit) => {
+    console.log(`${name} 已合并，commit: ${commit.slice(0, 7)}`);
+  },
+  onFailed: (name, reason) => {
+    console.log(`${name} 合并失败: ${reason}`);
+  },
+  onDone: (summary) => {
+    console.log(`完成: ${summary.status}, 主干 HEAD: ${summary.trunkHead}`);
+  },
 });
 
 // 等待全部完成
@@ -67,6 +76,30 @@ console.log(summary);
 6. 全部完成后返回摘要
 
 ## 监听进度
+
+gitmesh v2 提供两种监听方式。
+
+### 方式一：构造函数回调（推荐）
+
+```typescript
+const session = await gitmesh({
+  agents: [...],
+  onMerged: (name, commit) => {
+    console.log(`✅ ${name} 已合并，commit: ${commit.slice(0, 7)}`);
+  },
+  onFailed: (name, reason) => {
+    console.log(`❌ ${name} 合并失败: ${reason}`);
+  },
+  onConflict: (info) => {
+    console.log(`⚠️ ${info.agentName} 遇到 ${info.files.length} 个冲突`);
+  },
+  onDone: (summary) => {
+    console.log(`完成: ${summary.status}, 主干 HEAD: ${summary.trunkHead}`);
+  },
+});
+```
+
+### 方式二：session.on() 事件
 
 ```typescript
 session.on("worktree:ready", (info) => {

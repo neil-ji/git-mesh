@@ -9,10 +9,10 @@ gitmesh 和 Agent 之间只有两个通信点：
 ```
 gitmesh                         调用方 / Agent
   │                                  │
-  │ ── onReady(signal) ──→           │  1. 工作区就绪
-  │                                  │     Agent 开始编码
-  │                                  │     Agent 调用 signal.done()
-  │ ←── signal.done() ────           │
+  │ ── onReady(signal) ──→           │  1. 工作区就绪（fire-and-forget）
+  │                                  │     Agent 开始编码（gitmesh 不等返回）
+  │                                  │     Agent 完成后调用 signal.done()
+  │ ←── signal.done() ────           │     → 返回 Promise<boolean>
   │                                  │
   │ ── rebase ──→                    │  2. 合并引擎工作
   │                                  │
@@ -31,7 +31,7 @@ gitmesh                         调用方 / Agent
 interface AgentDefinition {
   name: string;           // 唯一名称
   baseRef?: string;       // 基于哪个 ref 创建工作区，默认 trunkBranch
-  onReady: (signal: AgentWorkDoneSignal) => void | Promise<void>;
+  onReady: (signal: AgentWorkDoneSignal) => void;  // fire-and-forget
   onConflict: (conflict: ConflictInfo) => Promise<ResolutionResult>;
 }
 ```
@@ -60,28 +60,35 @@ const agent = {
 };
 ```
 
-## onReady — 工作就绪信号
+## onReady — 工作就绪信号（fire-and-forget）
 
 所有 Agent 工作的起点。gitmesh 在 worktree 创建成功、分支准备好之后调用此回调。
 
 ```typescript
-onReady: async (signal: AgentWorkDoneSignal) => {
+onReady: (signal: AgentWorkDoneSignal) => {
   // signal.agentName   — Agent 名称
   // signal.worktreePath — 工作区的绝对路径
 
-  // 在这里启动你的 Agent
-  await runYourAgent({ cwd: signal.worktreePath });
-
-  // Agent 完成后，通知 gitmesh
-  signal.done();
+  // 在这里启动你的 Agent（fire-and-forget）
+  runYourAgent({ cwd: signal.worktreePath }).then(() => {
+    // Agent 完成后，等待 gitmesh 返回合并结果
+    signal.done().then((merged) => {
+      if (merged) {
+        console.log("代码已合入主干");
+      } else {
+        console.log("合并失败");
+      }
+    });
+  });
 };
 ```
 
 **重要规则**：
 
+- **`onReady` 是 fire-and-forget**：gitmesh 调用 `onReady` 后立即返回，不等待回调返回或 resolve。Agent 的生命周期完全由 `signal.done()` 控制
 - `signal.done()` **必须被调用**，否则 gitmesh 永远等待这个 Agent，session 永远不会结束
 - `signal.done()` 只能调用一次，重复调用会被忽略
-- `onReady` 可以是 async 函数，gitmesh 会 await 它（但合并引擎独立运行，不等 `done()`）
+- `signal.done()` **返回 `Promise<boolean>`**：`true` 表示代码成功合入主干，`false` 表示合并失败
 - Agent 的 commit 需要在 worktree 内完成；gitmesh 不自动 commit
 
 ### 典型接入模式
@@ -91,12 +98,11 @@ onReady: async (signal: AgentWorkDoneSignal) => {
 ```typescript
 import { query } from "@anthropic-ai/claude-code";
 
-onReady: async (signal) => {
-  await query({
+onReady: (signal) => {
+  query({
     prompt: "修复 OAuth token 刷新逻辑",
     cwd: signal.worktreePath,
-  });
-  signal.done();
+  }).then(() => signal.done());
 };
 ```
 
@@ -105,15 +111,9 @@ onReady: async (signal) => {
 ```typescript
 import { exec } from "child_process";
 
-onReady: async (signal) => {
-  await new Promise<void>((resolve, reject) => {
-    exec("bash ./agent-script.sh", { cwd: signal.worktreePath }, (err) => {
-      if (err) reject(err);
-      else {
-        signal.done();
-        resolve();
-      }
-    });
+onReady: (signal) => {
+  exec("bash ./agent-script.sh", { cwd: signal.worktreePath }, (err) => {
+    if (!err) signal.done();
   });
 };
 ```
@@ -121,23 +121,27 @@ onReady: async (signal) => {
 #### 模式 3：HTTP 回调
 
 ```typescript
-onReady: async (signal) => {
-  // 通知远程 Agent 服务工作区路径
-  await fetch("http://agent-service/start", {
+onReady: (signal) => {
+  // 通知远程 Agent 服务工作区路径（fire-and-forget）
+  fetch("http://agent-service/start", {
     method: "POST",
     body: JSON.stringify({ worktreePath: signal.worktreePath }),
   });
 
   // 轮询等待远程 Agent 完成
-  while (true) {
-    const res = await fetch("http://agent-service/status");
-    const { done } = await res.json();
-    if (done) {
-      signal.done();
-      break;
+  const poll = async () => {
+    while (true) {
+      const res = await fetch("http://agent-service/status");
+      const data = await res.json();
+      if (data.done) {
+        const merged = await signal.done();
+        console.log(`远程 Agent 合并${merged ? "成功" : "失败"}`);
+        return;
+      }
+      await new Promise(r => setTimeout(r, 1000));
     }
-    await sleep(1000);
-  }
+  };
+  poll();
 };
 ```
 

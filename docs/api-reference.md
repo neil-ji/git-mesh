@@ -24,10 +24,46 @@ function gitmesh(options: GitmeshOptions): Promise<Session>;
 | `workspaceDir` | `string` | 否 | `"../.gitmesh-workspaces"` | worktree 存储目录 |
 | `trunkBranch` | `string` | 否 | `"main"` | 主干分支名 |
 | `branchPrefix` | `string` | 否 | `"mesh/"` | Agent 分支名前缀 |
+| `onMerged` | `(name: string, commit: string) => void` | 否 | — | Agent 合并成功回调 |
+| `onFailed` | `(name: string, reason: string) => void` | 否 | — | Agent 合并失败回调 |
+| `onConflict` | `(info: ConflictInfo) => void` | 否 | — | 冲突通知回调 |
+| `onDone` | `(summary: SessionSummary) => void` | 否 | — | Session 结束回调 |
 
 **返回值**
 
 返回 `Promise<Session>`，resolve 时 session 已启动（worktree 已创建，Agent 已开始工作）。
+
+**示例**
+
+```typescript
+const session = await gitmesh({
+  cwd: "/path/to/repo",
+  agents: [
+    {
+      name: "fix-auth",
+      onReady: (signal) => {
+        runAgent({ cwd: signal.worktreePath }).then((ok) => {
+          if (ok) signal.done().then((merged) => {
+            console.log(merged ? "已合并" : "合并失败");
+          });
+        });
+      },
+      onConflict: async (conflict) => {
+        return { resolved: true };
+      },
+    },
+  ],
+  onMerged: (name, commit) => {
+    console.log(`${name} 已合并: ${commit}`);
+  },
+  onFailed: (name, reason) => {
+    console.log(`${name} 失败: ${reason}`);
+  },
+  onDone: (summary) => {
+    console.log(`Session 完成: ${summary.status}`);
+  },
+});
+```
 
 ---
 
@@ -51,6 +87,14 @@ interface GitmeshOptions {
   trunkBranch?: string;
   /** Agent 分支名前缀，默认 "mesh/" */
   branchPrefix?: string;
+  /** Agent 合并成功时调用 */
+  onMerged?: (name: string, commit: string) => void;
+  /** Agent 合并失败时调用 */
+  onFailed?: (name: string, reason: string) => void;
+  /** 发生冲突时调用 */
+  onConflict?: (info: ConflictInfo) => void;
+  /** Session 结束时调用 */
+  onDone?: (summary: SessionSummary) => void;
 }
 ```
 
@@ -64,8 +108,8 @@ interface AgentDefinition {
   name: string;
   /** 基于哪个 ref 创建工作区，默认 trunkBranch */
   baseRef?: string;
-  /** Agent 工作完成回调 */
-  onReady: (signal: AgentWorkDoneSignal) => void | Promise<void>;
+  /** Agent 工作回调（fire-and-forget：gitmesh 启动后立即返回，不等待 resolve） */
+  onReady: (signal: AgentWorkDoneSignal) => void;
   /** 冲突解决回调 */
   onConflict: (conflict: ConflictInfo) => Promise<ResolutionResult>;
 }
@@ -75,7 +119,7 @@ interface AgentDefinition {
 |------|------|------|------|
 | `name` | `string` | 是 | 唯一标识，用于 worktree 目录和分支命名 |
 | `baseRef` | `string` | 否 | 基于哪个 ref 创建工作区，默认使用 `trunkBranch` |
-| `onReady` | 回调 | 是 | 工作区就绪时调用，Agent 完成编码后需调用 `signal.done()` |
+| `onReady` | `(signal) => void` | 是 | 工作区就绪时调用（fire-and-forget），Agent 完成编码后需调用 `signal.done()` |
 | `onConflict` | 回调 | 是 | 冲突发生时调用，需返回 `ResolutionResult` |
 
 ---
@@ -88,8 +132,9 @@ interface AgentWorkDoneSignal {
   agentName: string;
   /** worktree 的绝对路径 */
   worktreePath: string;
-  /** 调用此方法通知 gitmesh：Agent 已完成，可以合并 */
-  done: () => void;
+  /** 调用此方法通知 gitmesh：Agent 已完成，开始合并
+   *  @returns Promise<boolean> — true 表示成功合入主干，false 表示合并失败 */
+  done: () => Promise<boolean>;
 }
 ```
 
