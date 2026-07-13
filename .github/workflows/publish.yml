@@ -45,4 +45,4 @@ jobs:
           EDITOR: 'true'
 
       - name: Publish
-        run: npm publish --provenance --tag ${{ inputs.tag || 'latest' }}
+        run: npm publish --tag ${{ inputs.tag || 'latest' }}
