@@ -633,4 +633,72 @@ describe("resolveConflict mode", () => {
     },
     30000,
   );
+
+  it(
+    "should pass runPrompt through to resolveConflict params when set in AgentDefinition",
+    async () => {
+      cleanupWorkspace();
+
+      const baseCommit = await execGit(["rev-parse", "HEAD"], { cwd: repo.cwd });
+      fs.writeFileSync(path.join(repo.cwd, "README.md"), "# Trunk runPrompt test\n");
+      await execGit(["add", "README.md"], { cwd: repo.cwd });
+      await execGit(["commit", "-m", "trunk changes readme"], { cwd: repo.cwd });
+
+      let receivedRunPrompt: any = undefined;
+      let runPromptCalled = false;
+
+      // Simulate a reusable agent session
+      const runPromptFn = async (p: string) => {
+        runPromptCalled = true;
+        return { success: true, output: `resolved: ${p.slice(0, 20)}...` };
+      };
+
+      const session = await gitmesh({
+        cwd: repo.cwd,
+        workspaceDir,
+        agents: [
+          {
+            name: "runprompt-test",
+            baseRef: baseCommit,
+            onReady: async (signal: AgentWorkDoneSignal) => {
+              const fp = path.join(signal.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Agent runprompt test\n");
+              await execGit(["add", "README.md"], { cwd: signal.worktreePath });
+              await execGit(["commit", "-m", "agent changes"], {
+                cwd: signal.worktreePath,
+              });
+              signal.done();
+            },
+            runPrompt: runPromptFn,
+            resolveConflict: async (params: ConflictResolutionParams) => {
+              receivedRunPrompt = params.runPrompt;
+
+              // Verify runPrompt is available
+              expect(params.runPrompt).toBeDefined();
+              expect(typeof params.runPrompt).toBe("function");
+
+              // Use runPrompt to send a message to the agent session
+              const result = await params.runPrompt!(
+                `Please resolve the conflict in README.md`
+              );
+              expect(result.success).toBe(true);
+              expect(result.output).toBeTruthy();
+
+              // Actually resolve the conflict
+              const fp = path.join(params.worktreePath, "README.md");
+              fs.writeFileSync(fp, "# Resolved via runPrompt\n");
+            },
+          },
+        ],
+        strategy: "rebase-first",
+        maxRetries: 3,
+      });
+
+      await session.done();
+
+      expect(receivedRunPrompt).toBeDefined();
+      expect(runPromptCalled).toBe(true);
+    },
+    30000,
+  );
 });

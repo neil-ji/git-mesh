@@ -34,7 +34,9 @@ interface AgentDefinition {
   name: string;           // 唯一名称
   baseRef?: string;       // 基于哪个 ref 创建工作区，默认 trunkBranch
   onReady: (signal: AgentWorkDoneSignal) => void;  // fire-and-forget
-  onConflict: (conflict: ConflictInfo) => Promise<ResolutionResult>;
+  onConflict?: (conflict: ConflictInfo) => Promise<ResolutionResult>;  // 完全自定义模式
+  resolveConflict?: (params: ConflictResolutionParams) => Promise<void>;  // 内建循环模式
+  runPrompt?: (prompt: string) => Promise<RunPromptResult>;  // 复用 agent session
 }
 ```
 

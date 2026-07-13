@@ -111,8 +111,14 @@ interface AgentDefinition {
   baseRef?: string;
   /** Agent 工作回调（fire-and-forget：gitmesh 启动后立即返回，不等待 resolve） */
   onReady: (signal: AgentWorkDoneSignal) => void;
-  /** 冲突解决回调 */
-  onConflict: (conflict: ConflictInfo) => Promise<ResolutionResult>;
+  /** 冲突解决回调（完全自定义模式，优先级最高） */
+  onConflict?: (conflict: ConflictInfo) => Promise<ResolutionResult>;
+  /** 自动冲突解决回调（内建循环模式）。gitmesh 自动构建 prompt、管理重试 */
+  resolveConflict?: (params: ConflictResolutionParams) => Promise<void>;
+  /** 向 agent session 发送后续消息，复用现有 session 而不是启动新进程 */
+  runPrompt?: (prompt: string) => Promise<RunPromptResult>;
+  /** resolveConflict 模式下的 prompt 自定义选项 */
+  conflictPromptOptions?: ConflictPromptOptions;
 }
 ```
 
@@ -121,7 +127,10 @@ interface AgentDefinition {
 | `name` | `string` | 是 | 唯一标识，用于 worktree 目录和分支命名 |
 | `baseRef` | `string` | 否 | 基于哪个 ref 创建工作区，默认使用 `trunkBranch` |
 | `onReady` | `(signal) => void` | 是 | 工作区就绪时调用（fire-and-forget），Agent 完成编码后需调用 `signal.done()` |
-| `onConflict` | 回调 | 是 | 冲突发生时调用，需返回 `ResolutionResult` |
+| `onConflict` | 回调 | 否 | 冲突发生时调用（优先级最高），需返回 `ResolutionResult` |
+| `resolveConflict` | 回调 | 否 | 自动冲突解决（内建循环），仅在未设置 `onConflict` 时生效 |
+| `runPrompt` | 回调 | 否 | 设置后被透传到 `resolveConflict` 的 params 中，可复用 agent session |
+| `conflictPromptOptions` | 对象 | 否 | `resolveConflict` 模式下的 prompt 自定义选项 |
 
 ---
 
@@ -296,6 +305,60 @@ interface ResolutionResult {
 
 ---
 
+## ConflictResolutionParams
+
+`resolveConflict` 回调收到的参数对象。
+
+```typescript
+interface ConflictResolutionParams {
+  /** Agent 应在哪个目录内解决冲突（worktree 路径） */
+  worktreePath: string;
+  /** 人类/LLM 可读的冲突描述，由 gitmesh 根据 ConflictInfo 自动生成 */
+  prompt: string;
+  /** 原始结构化冲突信息，供程序化处理 */
+  conflict: ConflictInfo;
+  /**
+   * 向原始 agent session 发送后续消息，复用现有 session。
+   * 仅在 AgentDefinition.runPrompt 已设置时可用。
+   */
+  runPrompt?: (prompt: string) => Promise<RunPromptResult>;
+}
+```
+
+---
+
+## RunPromptResult
+
+`runPrompt` 函数的返回值。
+
+```typescript
+interface RunPromptResult {
+  /** 是否成功 */
+  success: boolean;
+  /** Agent 输出文本 */
+  output: string;
+}
+```
+
+---
+
+## ConflictPromptOptions
+
+`resolveConflict` 模式下 prompt 生成的自定义选项。
+
+```typescript
+interface ConflictPromptOptions {
+  /** 自定义 prompt 头部文本，覆盖默认的冲突描述头 */
+  header?: string;
+  /** 是否包含追加策略提示（如检测到双发都是追加新行时提示合并）。默认 true */
+  hints?: boolean;
+  /** 单个文件内容的最大字符数，超过则截断。默认 8000 */
+  maxFileContent?: number;
+}
+```
+
+---
+
 ## WorktreeInfo
 
 ```typescript
@@ -369,6 +432,9 @@ export type {
   AgentDefinition,
   AgentWorkDoneSignal,
   AgentResolveConflict,
+  ConflictResolutionParams,
+  ConflictPromptOptions,
+  RunPromptResult,
   Session,
   SessionSummary,
   AgentResult,

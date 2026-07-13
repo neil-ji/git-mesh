@@ -45,6 +45,17 @@ export interface ConflictPromptOptions {
 }
 
 /**
+ * runPrompt 的返回值。
+ * 在 resolveConflict 中使用 runPrompt 向原始 agent session 发送消息时返回。
+ */
+export interface RunPromptResult {
+  /** 是否成功 */
+  success: boolean;
+  /** Agent 输出文本 */
+  output: string;
+}
+
+/**
  * resolveConflict 回调的参数。
  * gitmesh 自动构建 prompt 后传入，Agent 只需关注解决冲突本身。
  */
@@ -55,6 +66,16 @@ export interface ConflictResolutionParams {
   prompt: string;
   /** 原始结构化冲突信息，供程序化处理 */
   conflict: ConflictInfo;
+  /**
+   * 向原始 agent session 发送后续消息，复用现有 session 而不是启动新进程。
+   * 仅在 AgentDefinition.runPrompt 已设置时可用。
+   *
+   * 对比每次冲突都 fork 新进程：
+   * - 无冷启动开销（~500ms）
+   * - Agent 记住自己的改动，无需重新注入项目背景
+   * - 只需增量 prompt，不消耗完整背景 token
+   */
+  runPrompt?: (prompt: string) => Promise<RunPromptResult>;
 }
 
 // === Agent ===
@@ -89,6 +110,21 @@ export interface AgentDefinition {
   resolveConflict?: (params: ConflictResolutionParams) => Promise<void>;
   /** resolveConflict 模式下的 prompt 自定义选项 */
   conflictPromptOptions?: ConflictPromptOptions;
+  /**
+   * 向 agent session 发送后续消息的函数。
+   * 设置后，此函数会被透传到 resolveConflict 的 params.runPrompt，
+   * 使冲突解决可以复用原始 agent session，而无需每次重试都启动新进程。
+   *
+   * @example
+   * ```typescript
+   * runPrompt: async (prompt) => {
+   *   // 向已在运行的 agent session 发送消息
+   *   const response = await agentSession.sendMessage(prompt);
+   *   return { success: true, output: response.text };
+   * }
+   * ```
+   */
+  runPrompt?: (prompt: string) => Promise<RunPromptResult>;
 }
 
 export interface AgentWorkDoneSignal {

@@ -292,6 +292,7 @@ export class SessionImpl
             worktreePath: conflict.worktreePath,
             prompt,
             conflict,
+            runPrompt: agent.runPrompt,
           });
           return { resolved: true };
         } catch (err) {

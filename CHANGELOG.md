@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.19] - 2026-07-13
+
+_resolveConflict session 复用 — runPrompt 透传。_
+
+- feat: `AgentDefinition` 新增 `runPrompt` 回调 — 定义一次，gitmesh 自动透传到 `resolveConflict` 的 params 中
+- feat: `ConflictResolutionParams` 新增 `runPrompt` 字段 — 适配器可复用 `onReady` 中创建的 agent session，无需每次冲突都 fork 新进程
+- feat: 新增 `RunPromptResult` 类型 `{ success: boolean; output: string }` 并导出
+- test: 新增 runPrompt 透传集成测试（共 121 个测试）
+- docs: 冲突解决文档新增「复用 Agent Session」章节，含对比表和使用示例
+
 ## [0.1.18] - 2026-07-13
 
 _冲突解决循环内建 — resolveConflict 模式。_

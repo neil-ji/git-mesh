@@ -17,6 +17,7 @@ export type {
   AgentResolveConflict,
   ConflictResolutionParams,
   ConflictPromptOptions,
+  RunPromptResult,
   Session,
   SessionSummary,
   AgentResult,

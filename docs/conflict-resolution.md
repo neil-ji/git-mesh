@@ -109,6 +109,7 @@ resolveConflict({              ← 你的 Agent 收到封装好的参数
   worktreePath,                ← 在哪解决
   prompt,                      ← LLM/人类可读的冲突描述
   conflict,                    ← 原始结构化数据
+  runPrompt,                   ← 复用原始 session 的函数（需在 AgentDefinition 中设置）
 })
     │
     ├─ return（成功）→ { resolved: true }
@@ -130,8 +131,15 @@ resolveConflict({              ← 你的 Agent 收到封装好的参数
 
 ```typescript
 {
-  resolveConflict: async ({ worktreePath, prompt, conflict }) => {
+  resolveConflict: async ({ worktreePath, prompt, conflict, runPrompt }) => {
+    // 方式 A：每次都启动新 agent 进程
     await runAgent(worktreePath, prompt);
+
+    // 方式 B：复用 onReady 中创建的 agent session（推荐）
+    if (runPrompt) {
+      const result = await runPrompt(prompt);
+      console.log(`Agent 输出: ${result.output}`);
+    }
   },
   conflictPromptOptions: {
     header: "自定义提示头...",   // 覆盖默认头部
@@ -156,6 +164,47 @@ onConflict: async (conflict) => {
   return { resolved: true };
 }
 ```
+
+### 复用 Agent Session（`runPrompt`）
+
+默认情况下，每次 `resolveConflict` 触发时，调用方需要启动新的 agent 进程（fork），这会带来冷启动开销和上下文丢失。通过设置 `AgentDefinition.runPrompt`，可以让冲突解决复用 `onReady` 中创建的原始 agent session：
+
+```typescript
+// 在 AgentDefinition 中设置 runPrompt
+const agent = {
+  name: "fix-auth",
+  onReady: async (signal) => {
+    // 创建并保持 agent session 存活
+    const session = createAgentSession({ cwd: signal.worktreePath });
+    await session.run(prompt);
+    // 不退出 session —— 等待可能的冲突解决
+    signal.done();
+  },
+  // 提供复用 session 的函数
+  runPrompt: async (prompt) => {
+    const result = await session.sendMessage(prompt);
+    return { success: true, output: result.text };
+  },
+  // resolveConflict 中直接使用 runPrompt
+  resolveConflict: async ({ worktreePath, prompt, conflict, runPrompt }) => {
+    if (runPrompt) {
+      const result = await runPrompt(prompt);
+      // result.output 包含 agent 的响应
+    }
+  },
+};
+```
+
+**对比**
+
+|                        | 每次 fork 新进程                      | 复用 session（runPrompt）     |
+|------------------------|--------------------------------------|------------------------------|
+| 进程启动               | fork 新进程（~500ms）                | 使用已有进程                 |
+| 上下文                 | 需重新注入项目背景                    | Agent 记住自己的改动          |
+| Token 消耗             | 每次重试消耗完整背景 token           | 仅增量 prompt                 |
+| 调用方复杂度           | 需管理 ChatAgentOptions + 子进程     | 零配置，一个回调函数          |
+
+> **注意**：`runPrompt` 仅在 `AgentDefinition.runPrompt` 已设置时才能在 `resolveConflict` 的 params 中获取。如果未设置，`params.runPrompt` 为 `undefined`。
 
 ## 重试控制
 
