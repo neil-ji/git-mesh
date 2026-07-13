@@ -184,9 +184,8 @@ async function runWithRetry(
 function createSmartAgent(name: string, taskPrompt: string): AgentDefinition {
   return {
     name,
-    onReady: async (signal) => {
-      await runClaudeAgent({ prompt: taskPrompt, cwd: signal.worktreePath });
-      signal.done();
+    onReady: (signal) => {
+      runClaudeAgent({ prompt: taskPrompt, cwd: signal.worktreePath }).then(() => signal.done());
     },
     onConflict: async (conflict) => {
       // 分析冲突类型
@@ -283,10 +282,30 @@ function attachMetrics(session: Session): SessionMetrics {
   return m;
 }
 
-// 使用
+// 使用（session.on 方式）
 const session = await gitmesh({ agents: [...] });
 attachMetrics(session);
 const summary = await session.done();
+
+// 或使用构造函数回调实现类似监控
+async function monitoredSession(tasks) {
+  const timings = new Map();
+
+  const session = await gitmesh({
+    agents: tasks,
+    onMerged: (name) => {
+      console.log(`${name} 合并完成`);
+    },
+    onFailed: (name, reason) => {
+      console.log(`${name} 失败: ${reason}`);
+    },
+    onDone: (summary) => {
+      console.log(`Session 结束: ${summary.status}`);
+    },
+  });
+
+  return session.done();
+}
 ```
 
 ## 与 CI/CD 集成
@@ -297,24 +316,23 @@ import { gitmesh } from "gitmesh";
 async function ciPipeline(tasks: AgentTask[]) {
   console.log("=== gitmesh CI Pipeline ===");
 
+  let hasFailures = false;
+
   const session = await gitmesh({
     cwd: process.env.REPO_PATH ?? process.cwd(),
     agents: tasks.map(createAgent),
     strategy: "rebase-first",
     maxRetries: 2,
     conflictTimeout: 300_000, // CI 环境设置更短的超时
-  });
-
-  let hasFailures = false;
-
-  session.on("mesh:failed", (name, reason) => {
-    hasFailures = true;
-    // CI 日志格式
-    console.log(`::error title=gitmesh::${name} 合并失败: ${reason}`);
-  });
-
-  session.on("mesh:merged", (name, commit) => {
-    console.log(`::notice title=gitmesh::${name} 已合并: ${commit.slice(0, 7)}`);
+    // 使用构造函数回调代替 session.on()
+    onFailed: (name, reason) => {
+      hasFailures = true;
+      // CI 日志格式
+      console.log(`::error title=gitmesh::${name} 合并失败: ${reason}`);
+    },
+    onMerged: (name, commit) => {
+      console.log(`::notice title=gitmesh::${name} 已合并: ${commit.slice(0, 7)}`);
+    },
   });
 
   const summary = await session.done();
