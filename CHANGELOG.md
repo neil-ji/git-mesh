@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.17] - 2026-07-13
+
+_SDK 集成 & 包体积优化。_
+
+- docs: 新增 `docs/sdk-integration.md` — gitmesh 与 simple-git、isomorphic-git、nodegit 等主流 Git SDK 的集成指南
+- test: 新增 6 个 SDK 集成测试（`test/sdk-integration.test.ts`）— simple-git 基本操作、并行 Agent、冲突解决、混合 SDK 场景
+- perf: 移除 sourceMap 和 declarationMap，包体积 42.1 kB → 28.4 kB（-33%），文件数 67 → 35
+- feat: package.json 新增 `exports` 字段和 `sideEffects: false`
+- docs: README 新增「与其他 Git SDK 集成」章节 + SDK 对照表
+
 ## [0.1.16] - 2026-07-13
 
 _API: worktreePath 审计增强。_
