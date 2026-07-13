@@ -29,14 +29,17 @@ npm version patch        # bump 版本号 + 打 tag
 # 1. 确认改动已提交，测试通过
 npm test
 
-# 2. bump 版本 + 推送 tag（自动触发 CD pipeline）
+# 2. 更新 CHANGELOG.md（在顶部加版本条目）
+
+# 3. bump 版本 + 推送 tag（自动触发 CI → 测试通过 → 发布）
 npm version patch && git push --follow-tags
 ```
 
-CD pipeline 流程：`tag push → npm ci → tsc --noEmit → vitest run → npm publish (OIDC Trusted Publishing)`
+CD pipeline 流程：`tag push → test 矩阵 → verify-package → npm publish (OIDC Trusted Publishing)`
 
-- 发布不需要 token——用的是 npm Trusted Publishing (OIDC)
+- 发布不需要 token——用的是 npm Trusted Publishing (OIDC)，Trusted Publisher 指向 `ci.yml`
 - 版本号不可覆盖，每次发布必须 bump
+- 记得在 bump 之前更新 CHANGELOG.md
 
 ## 关键设计
 
