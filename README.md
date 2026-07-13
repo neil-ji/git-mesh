@@ -111,7 +111,21 @@ const summary = await session.done();
 - **[Rebase-First 合并](https://neil-ji.github.io/git-mesh/sdk.html#merge-strategies)** — 线性 git 历史，冲突在 worktree 内解决，不污染主干
 - **[冲突路由](https://neil-ji.github.io/git-mesh/sdk.html#conflict-resolution)** — 检测 → 通知 Agent → 解决 → 重试，循环直到成功或超限
 
-> **gitmesh 不是 git SDK。** 它不封装 `git add`、`git commit`、`git config` 等操作。worktree 内的编码和 git 操作由 Agent 自行管理（推荐使用 [simple-git](https://github.com/steveukx/git-js) 等库）。gitmesh 只做一件事：**把并行变更安全地合到一起。**
+> **gitmesh 不是 git SDK。** 它不封装 `git add`、`git commit`、`git config` 等操作。worktree 内的编码和 git 操作由 Agent 自行管理。gitmesh 只做一件事：**把并行变更安全地合到一起。**
+
+## 与其他 Git SDK 集成
+
+gitmesh 通过文件系统与 Agent 通信 — `signal.worktreePath` 就是一个普通的 git 工作区路径。Agent 在里面可以用任何 Git 工具：
+
+| SDK | 适用场景 | 集成方式 |
+|-----|---------|---------|
+| **[simple-git](https://github.com/steveukx/git-js)** | Node.js 项目首选 | `simpleGit(signal.worktreePath)` |
+| **[isomorphic-git](https://isomorphic-git.org/)** | 浏览器 / 受限环境 | `git.add({ fs, dir: signal.worktreePath, ... })` |
+| **Raw Git CLI** | 零依赖 | `execFile("git", ["commit", ...], { cwd: signal.worktreePath })` |
+| **[nodegit](https://github.com/nodegit/nodegit)** | 需要 libgit2 性能 | `Repository.open(signal.worktreePath)` |
+
+同一 session 中的不同 Agent 可以混用不同 SDK — gitmesh 不关心每个 Agent 的内部实现。详见 **[SDK 集成指南](https://neil-ji.github.io/git-mesh/sdk.html#sdk-integration)**。
+
 - **[事件系统](https://neil-ji.github.io/git-mesh/sdk.html#events)** — 8 个 typed 事件覆盖从 worktree 创建到合并完成的全流程；也可通过构造函数 `onMerged` / `onFailed` / `onConflict` / `onDone` 回调监听，免去事件注册的时序问题
 
 ## API 概览
@@ -173,7 +187,8 @@ interface AgentWorkDoneSignal {
 
 - **[落地页](https://neil-ji.github.io/git-mesh/)** — 产品介绍和交互式工作流程演示
 - **[SDK 文档](https://neil-ji.github.io/git-mesh/sdk.html)** — 完整 API 参考和使用指南
-  - 快速开始 · 核心概念 · Agent 协议 · 合并策略 · 冲突解决 · API 参考 · 事件系统 · 错误处理 · 高级用法
+  - 快速开始 · 核心概念 · Agent 协议 · 合并策略 · 冲突解决 · API 参考 · 事件系统 · 错误处理 · 高级用法 · **SDK 集成**
+- **[SDK 集成指南](docs/sdk-integration.md)** — gitmesh 与 simple-git、isomorphic-git 等主流 Git SDK 的集成方式
 
 ## License
 
