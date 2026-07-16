@@ -47,6 +47,8 @@ export interface MergeEngineOptions {
   strategy: string;
   /** 预期 agent 数量（checkAllDone 用） */
   totalAgentCount?: number;
+  /** 每次 rebase 前调用，允许调用方清理 worktree */
+  onBeforeRebase?: () => void | Promise<void>;
   /** 每次 merge 前调用，允许调用方清理 working tree */
   onBeforeMerge?: () => void | Promise<void>;
   /** 合并模式：'full'（默认）或 'ref-only'（仅更新 ref） */
@@ -267,6 +269,13 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
       if (signal.aborted) return;
 
       this.emit("mesh:rebase", item.agentName);
+
+      // Rebase 前回调：允许调用方清理 worktree（如 auto-commit 未提交的改动）
+      if (this.opts.onBeforeRebase) {
+        await this.opts.onBeforeRebase();
+      }
+
+      if (signal.aborted) return;
 
       const rebaseResult = await rebaseBranch(
         item.worktreePath,

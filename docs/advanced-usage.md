@@ -440,6 +440,70 @@ const merged = await signal.done();
 // working tree 保持原样，ref 已更新
 ```
 
+## 进度追踪
+
+`signal.done()` 返回 `Promise<boolean>`，但从调用到 resolve 可能经历多次 rebase 重试、冲突解决、merge 锁等待。如果调用方需要在 UI 上展示粒度化的进度（如「正在解决冲突（第 2/3 次）」），使用**构造函数回调**：
+
+```typescript
+const session = await gitmesh({
+  agents: [...],
+  // ✅ 用构造函数回调 —— 在 start() 之前已注册，无时序问题
+  onConflict: (info) => {
+    updateProgress(info.agentName, {
+      phase: "conflict",
+      detail: `解决冲突 (${info.attempt}/${info.maxRetries})`,
+      files: info.files.map(f => f.path),
+    });
+  },
+  onMerged: (name, commit) => {
+    updateProgress(name, { phase: "merged", detail: commit.slice(0, 7) });
+  },
+  onFailed: (name, reason) => {
+    updateProgress(name, { phase: "failed", detail: reason });
+  },
+});
+```
+
+**为什么不用 `session.on()`？** 时序问题：`gitmesh()` 返回时 session 已启动（`start()` 已调用），事件可能在 `session.on()` 注册之前就 fire 了。构造函数回调在 `start()` 之前注册，不存在丢事件的窗口。
+
+可追踪的状态节点：
+
+| 回调 | 触发时机 | 可用信息 |
+|------|---------|---------|
+| `onConflict` | rebase 检测到冲突 | `attempt`、`maxRetries`、`files`、`worktreePath` |
+| `onMerged` | 成功合入主干 | `name`、`commit` |
+| `onFailed` | 合并失败 | `name`、`reason`、`worktreePath` |
+| `onDone` | session 结束 | `status`、所有 `AgentResult` |
+
+spark-hub 示例：把 gitmesh 事件映射到 task status：
+
+```typescript
+const session = await gitmesh({
+  agents: tasks.map(task => ({
+    name: task.id,
+    onReady: ...,
+  })),
+  onConflict: (info) => {
+    // task status: "resolving conflict (2/3)"
+    hub.updateTaskStatus(info.agentName, {
+      status: "conflict",
+      attempt: info.attempt,
+      maxRetries: info.maxRetries,
+    });
+  },
+  onDone: (summary) => {
+    // 汇总所有 agent 结果
+    for (const r of summary.results) {
+      hub.updateTaskStatus(r.agentName, {
+        status: r.status,
+        commit: r.mergeCommit,
+        reason: r.reason,
+      });
+    }
+  },
+});
+```
+
 ## 下一步
 
 - [API 参考](./api-reference.md) — 完整的类型和函数文档

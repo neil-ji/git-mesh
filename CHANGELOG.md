@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.22] - 2026-07-16
+
+_Rebase dirty-tree 保护 — 消除 autoCommitWorktree workaround。_
+
+- feat: `rebaseBranch` 执行前检查 worktree 是否干净，脏时抛清晰错误
+- feat: `GitmeshOptions` 新增 `onBeforeRebase` 回调 — 每次 rebase 前调用，允许适配器清理 worktree 未提交的改动
+- docs: 高级用法新增「进度追踪」章节 — 用构造函数回调做粒度化状态展示
+- test: 新增 2 个测试（rebase dirty check、onBeforeRebase hook）
+
 ## [0.1.21] - 2026-07-16
 
 _Merge 策略可插拔 — squash merge + conflict strategy。_

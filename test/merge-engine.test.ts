@@ -10,6 +10,7 @@ import { createTempRepo, TempRepo, simulateAgentWork } from "./_helpers";
 import { createWorktree, removeWorktree, getTrunkHead } from "../src/worktree";
 import { execGit } from "../src/git";
 import { MergeEngine } from "../src/merge-engine";
+import { rebaseBranch } from "../src/rebase";
 import {
   checkWorkingTreeClean,
   fastForwardMerge,
@@ -500,5 +501,58 @@ describe("Merge Engine", () => {
     expect(content).toContain("Agent change");
 
     await removeWorktree("cs-agent", wopts(), true);
+  });
+
+  // === Rebase dirty-tree protection ===
+
+  it("rebaseBranch should throw on dirty worktree", async () => {
+    const wt = await createWorktree("rb-dirty", "main", wopts());
+    // Create a dirty file without committing
+    fs.writeFileSync(path.join(wt.path, "uncommitted.txt"), "dirty");
+
+    try {
+      await expect(
+        rebaseBranch(wt.path, "main")
+      ).rejects.toThrow(/Worktree is not clean/);
+    } finally {
+      await removeWorktree("rb-dirty", wopts(), true);
+    }
+  });
+
+  it("onBeforeRebase hook should be called before rebase", async () => {
+    const wt = await createWorktree("hook-rb", "main", wopts());
+    await simulateAgentWork(wt.path, "hr.md", "# HR", "feat: hr");
+
+    let hookCalled = false;
+
+    const engine = new MergeEngine({
+      cwd: repo.cwd,
+      trunkBranch: "main",
+      workspaceDir,
+      branchPrefix: "mesh/",
+      maxRetries: 2,
+      conflictTimeout: 30000,
+      strategy: "rebase-first",
+      onBeforeRebase: () => {
+        hookCalled = true;
+      },
+    });
+
+    const donePromise = engine.start();
+    engine.enqueue({
+      agentName: "hook-rb",
+      worktreePath: wt.path,
+      branch: wt.branch,
+      onConflict: async () => ({ resolved: false, reason: "no" }),
+      retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
+    });
+
+    const results = await donePromise;
+    expect(results[0].status).toBe("merged");
+    expect(hookCalled).toBe(true);
+
+    await removeWorktree("hook-rb", wopts(), true);
   });
 });

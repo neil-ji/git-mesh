@@ -34,6 +34,13 @@ export interface GitmeshOptions {
   /** Session 完成回调 */
   onDone?: (summary: SessionSummary) => void;
   /**
+   * 每次 rebase 前调用，允许调用方清理 worktree。
+   *
+   * 在 worktree 内执行 git rebase 之前触发。
+   * 适用于 Agent 修改了文件但未 commit 的场景（如 linter 自动修复）。
+   */
+  onBeforeRebase?: () => void | Promise<void>;
+  /**
    * 每次 merge 前调用，允许调用方清理 working tree。
    *
    * 在获取 merge lock 之后、执行 git merge 之前触发。

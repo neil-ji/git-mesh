@@ -5,6 +5,7 @@
 
 import { execGit, execGitFull } from "./git";
 import { detectConflicts } from "./conflict";
+import { checkWorkingTreeClean } from "./merge";
 import type { ConflictFile } from "./types";
 
 export interface RebaseSuccess {
@@ -25,6 +26,15 @@ export async function rebaseBranch(
   worktreePath: string,
   targetBranch: string
 ): Promise<RebaseResult> {
+  // 检查 worktree 是否干净 — dirty 的工作树 rebase 会挂
+  const dirtyFiles = await checkWorkingTreeClean(worktreePath);
+  if (dirtyFiles.length > 0) {
+    const fileList = dirtyFiles.map((f) => `  ${f}`).join("\n");
+    throw new Error(
+      `Worktree is not clean. Cannot rebase.\nDirty files:\n${fileList}\nCommit or stash changes before rebasing.`
+    );
+  }
+
   const result = await execGitFull(
     ["rebase", targetBranch],
     { cwd: worktreePath }
