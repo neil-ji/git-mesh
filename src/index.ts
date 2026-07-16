@@ -32,6 +32,7 @@ export type {
 
 // 导出工具函数
 export { buildConflictPrompt } from "./conflict";
+export { checkWorkingTreeClean, refOnlyMerge, fastForwardMerge, canFastForward } from "./merge";
 
 // 导出错误类
 export {

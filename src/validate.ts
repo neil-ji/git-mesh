@@ -14,7 +14,7 @@ import {
 /**
  * 校验 gitmesh 入参并填充默认值
  */
-export type ResolvedGitmeshOptions = Required<Pick<GitmeshOptions, 'cwd' | 'strategy' | 'maxRetries' | 'conflictTimeout' | 'workspaceDir' | 'trunkBranch' | 'branchPrefix'>> & Pick<GitmeshOptions, 'agents' | 'onMerged' | 'onFailed' | 'onConflict' | 'onDone'>;
+export type ResolvedGitmeshOptions = Required<Pick<GitmeshOptions, 'cwd' | 'strategy' | 'maxRetries' | 'conflictTimeout' | 'workspaceDir' | 'trunkBranch' | 'branchPrefix'>> & Pick<GitmeshOptions, 'agents' | 'onMerged' | 'onFailed' | 'onConflict' | 'onDone' | 'onBeforeMerge' | 'mergeMode'>;
 
 export function resolveOptions(
   options: GitmeshOptions
@@ -61,6 +61,8 @@ export function resolveOptions(
     onFailed: options.onFailed,
     onConflict: options.onConflict,
     onDone: options.onDone,
+    onBeforeMerge: options.onBeforeMerge,
+    mergeMode: options.mergeMode ?? "full",
   };
 }
 

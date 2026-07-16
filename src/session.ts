@@ -72,6 +72,8 @@ export class SessionImpl
       conflictTimeout: opts.conflictTimeout,
       strategy: opts.strategy,
       totalAgentCount: opts.agents.length,
+      onBeforeMerge: opts.onBeforeMerge,
+      mergeMode: opts.mergeMode,
     });
 
     // 在构造函数中注册回调——早于任何事件可能触发

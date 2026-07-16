@@ -362,6 +362,84 @@ async function ciPipeline(tasks: AgentTask[]) {
 }
 ```
 
+## 脏工作树处理
+
+gitmesh 的 merge 操作在主仓库（`cwd`）内执行 `git checkout + git merge --ff-only`。如果主仓库有编译产物（`.tsbuildinfo`）、编辑器临时文件等脏文件，merge 会失败。
+
+gitmesh 提供三层方案处理这个问题。
+
+### 方案 1：脏树检测（内置，无需配置）
+
+从 0.1.20 起，`fastForwardMerge` 在合并前自动检测 working tree 是否干净。如果不干净，抛出清晰的错误信息：
+
+```
+Working tree is not clean. Cannot fast-forward merge.
+Dirty files:
+  ?? packages/web/tsconfig.tsbuildinfo
+  M  packages/web/src/components/Preview.tsx
+Commit or stash changes before merging.
+```
+
+调用方可以直接看到哪些文件需要清理。
+
+### 方案 2：onBeforeMerge 回调
+
+注册 `onBeforeMerge` 回调，在每次 merge 前自动清理脏文件：
+
+```typescript
+const session = await gitmesh({
+  agents: [...],
+  onBeforeMerge: async () => {
+    // 清理编译产物
+    await execGit(["clean", "-fd", "*.tsbuildinfo"], { cwd: repoRoot });
+    // 或 stash 所有未跟踪文件
+    // await execGit(["stash", "--include-untracked"], { cwd: repoRoot });
+  },
+});
+```
+
+回调在获取 merge lock 之后、执行 merge 之前触发，确保清理和 merge 之间没有竞态。
+
+### 方案 3：ref-only 合并模式
+
+使用 `mergeMode: "ref-only"` 完全跳过 working tree 操作，仅更新 git ref：
+
+```typescript
+const session = await gitmesh({
+  agents: [...],
+  mergeMode: "ref-only",
+});
+
+const summary = await session.done();
+
+// ref-only 模式不更新 working tree，调用方需自行同步：
+await execGit(["checkout", "main"], { cwd: repoRoot });
+await execGit(["reset", "--hard", "main"], { cwd: repoRoot });
+```
+
+| 特性 | `full`（默认） | `ref-only` |
+|------|---------------|------------|
+| 更新 working tree | ✅ | ❌ |
+| 需要干净工作树 | ✅ | ❌ |
+| 自动检测脏树 | ✅ | ❌（不需要） |
+| 调用方同步工作树 | 不需要 | 需要手动 `git checkout/reset` |
+
+**适用场景**：主仓库持续有编译产物，且不方便在每次 merge 前清理。spark-hub 之类的适配器可以从 `autoCommitTrunk` workaround 切换为 `mergeMode: "ref-only"`。
+
+```typescript
+// Before（spark-hub workaround）
+await autoCommitTrunk(repoRoot, task);  // 强制 commit 所有脏文件
+const merged = await signal.done();
+
+// After（gitmesh 0.1.20+）
+const session = await gitmesh({
+  agents: [...],
+  mergeMode: "ref-only",
+});
+const merged = await signal.done();
+// working tree 保持原样，ref 已更新
+```
+
 ## 下一步
 
 - [API 参考](./api-reference.md) — 完整的类型和函数文档

@@ -27,6 +27,22 @@ export interface GitmeshOptions {
   onConflict?: (info: ConflictInfo) => void;
   /** Session 完成回调 */
   onDone?: (summary: SessionSummary) => void;
+  /**
+   * 每次 merge 前调用，允许调用方清理 working tree。
+   *
+   * 在获取 merge lock 之后、执行 git merge 之前触发。
+   * 适用于主仓库有编译产物、编辑器临时文件等脏文件需要清理的场景。
+   */
+  onBeforeMerge?: () => void | Promise<void>;
+  /**
+   * 合并模式。
+   *
+   * - `'full'`（默认）：git checkout + git merge --ff-only，会更新 working tree
+   * - `'ref-only'`：仅通过 git update-ref 更新 ref，不触及 working tree 或 index。
+   *   调用方需自行负责同步 working tree（如 git checkout / git reset）。
+   *   适用于主仓库有脏文件且无法或不方便清理的场景。
+   */
+  mergeMode?: "full" | "ref-only";
 }
 
 // === 冲突解决（resolveConflict 模式） ===

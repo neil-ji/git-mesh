@@ -29,6 +29,8 @@ function gitmesh(options: GitmeshOptions): Promise<Session>;
 | `onFailed` | `(name: string, reason: string, worktreePath: string) => void` | 否 | — | Agent 合并失败回调 |
 | `onConflict` | `(info: ConflictInfo) => void` | 否 | — | 冲突通知回调 |
 | `onDone` | `(summary: SessionSummary) => void` | 否 | — | Session 结束回调 |
+| `onBeforeMerge` | `() => void \| Promise<void>` | 否 | — | 每次 merge 前调用，允许调用方清理 working tree |
+| `mergeMode` | `"full"` \| `"ref-only"` | 否 | `"full"` | 合并模式：`"full"` 执行完整 git merge；`"ref-only"` 仅更新 ref，不碰 working tree |
 
 **返回值**
 
@@ -96,6 +98,21 @@ interface GitmeshOptions {
   onConflict?: (info: ConflictInfo) => void;
   /** Session 结束时调用 */
   onDone?: (summary: SessionSummary) => void;
+  /**
+   * 每次 merge 前调用，允许调用方清理 working tree。
+   *
+   * 在获取 merge lock 之后、执行 git merge 之前触发。
+   * 适用于主仓库有编译产物、编辑器临时文件等脏文件需要清理的场景。
+   */
+  onBeforeMerge?: () => void | Promise<void>;
+  /**
+   * 合并模式。
+   *
+   * - `'full'`（默认）：git checkout + git merge --ff-only，会更新 working tree
+   * - `'ref-only'`：仅通过 git update-ref 更新 ref，不触及 working tree 或 index。
+   *   调用方需自行负责同步 working tree（如 git checkout / git reset）。
+   */
+  mergeMode?: "full" | "ref-only";
 }
 ```
 
@@ -425,6 +442,15 @@ GitmeshError
 
 // 入口函数
 export { gitmesh, default } from "gitmesh";
+
+// 工具函数
+export {
+  buildConflictPrompt,
+  checkWorkingTreeClean,
+  fastForwardMerge,
+  refOnlyMerge,
+  canFastForward,
+} from "gitmesh";
 
 // 类型
 export type {

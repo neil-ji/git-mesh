@@ -12,7 +12,7 @@
 import { TypedEventEmitter } from "./events";
 import { AsyncLock } from "./lock";
 import { rebaseBranch, continueRebase, abortRebase, isRebasing } from "./rebase";
-import { fastForwardMerge } from "./merge";
+import { fastForwardMerge, refOnlyMerge } from "./merge";
 import { buildConflictInfo, hasConflicts } from "./conflict";
 import { getTrunkHead, removeWorktree } from "./worktree";
 import {
@@ -47,6 +47,10 @@ export interface MergeEngineOptions {
   strategy: string;
   /** 预期 agent 数量（checkAllDone 用） */
   totalAgentCount?: number;
+  /** 每次 merge 前调用，允许调用方清理 working tree */
+  onBeforeMerge?: () => void | Promise<void>;
+  /** 合并模式：'full'（默认）或 'ref-only'（仅更新 ref） */
+  mergeMode?: "full" | "ref-only";
 }
 
 /**
@@ -418,8 +422,15 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
         return;
       }
 
+      // 合并前回调：允许调用方清理 working tree
+      if (this.opts.onBeforeMerge) {
+        await this.opts.onBeforeMerge();
+      }
+
       // 合并！
-      const newHead = await fastForwardMerge(
+      const mergeFn =
+        this.opts.mergeMode === "ref-only" ? refOnlyMerge : fastForwardMerge;
+      const newHead = await mergeFn(
         item.branch,
         this.opts.trunkBranch,
         this.opts.cwd

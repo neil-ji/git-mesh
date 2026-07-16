@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.20] - 2026-07-16
+
+_脏工作树处理 — 三层方案解决 merge 时主仓库脏文件导致的合并失败。_
+
+- feat: `fastForwardMerge` 合并前检测 working tree 是否干净，不干净时抛出清晰错误（含脏文件列表）
+- feat: `GitmeshOptions` 新增 `onBeforeMerge` 回调 — 每次 merge 前调用，允许适配器清理主仓库脏文件
+- feat: `GitmeshOptions` 新增 `mergeMode: 'full' | 'ref-only'` — ref-only 模式仅用 `git update-ref` 更新 ref，完全跳过 working tree 操作
+- feat: 新增 `refOnlyMerge()` 公开函数 — ref-only 合并的底层实现
+- feat: 新增 `checkWorkingTreeClean()` 公开函数 — 检查 working tree 是否有脏文件
+- docs: API 参考新增 `onBeforeMerge`、`mergeMode` 文档
+- docs: 高级用法新增「脏工作树处理」章节，含三种方案对比和 spark-hub 迁移示例
+- test: 新增 8 个测试用例（脏树检测、onBeforeMerge hook、ref-only merge）
+
 ## [0.1.19] - 2026-07-13
 
 _resolveConflict session 复用 — runPrompt 透传。_

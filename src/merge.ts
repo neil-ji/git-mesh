@@ -11,6 +11,19 @@ import { getTrunkHead } from "./worktree";
 import { MergeError, RebaseError } from "./errors";
 
 /**
+ * 检查 working tree 是否干净。
+ * 返回脏文件列表（git status --porcelain 的每一行），干净时返回空数组。
+ */
+export async function checkWorkingTreeClean(cwd: string): Promise<string[]> {
+  const output = await execGit(["status", "--porcelain"], {
+    cwd,
+    allowNonZero: true,
+  });
+  if (!output) return [];
+  return output.split("\n").filter(Boolean);
+}
+
+/**
  * fast-forward 合并 Agent 分支到主干
  * @returns 新的主干 HEAD commit hash
  */
@@ -19,25 +32,34 @@ export async function fastForwardMerge(
   trunkBranch: string,
   cwd: string
 ): Promise<string> {
-  // 1. 切换到主干分支
+  // 1. 检查 working tree 是否干净
+  const dirtyFiles = await checkWorkingTreeClean(cwd);
+  if (dirtyFiles.length > 0) {
+    const fileList = dirtyFiles.map((f) => `  ${f}`).join("\n");
+    throw new MergeError(
+      branch,
+      `Working tree is not clean. Cannot fast-forward merge.\nDirty files:\n${fileList}\nCommit or stash changes before merging.`
+    );
+  }
+
+  // 2. 切换到主干分支
   await execGit(["checkout", trunkBranch], { cwd });
 
-  // 2. 尝试 fast-forward merge
+  // 3. 尝试 fast-forward merge
   const result = await execGitFull(
     ["merge", "--ff-only", branch],
     { cwd }
   );
 
   if (result.exitCode !== 0) {
-    // merge 失败，可能是因为分支不是 fast-forwardable
-    // 回退并报错
+    // merge 失败 — 可能是分支不是 fast-forwardable，或其他 git 错误
     throw new MergeError(
       branch,
-      `Fast-forward merge failed. The branch is not a descendant of ${trunkBranch}: ${result.stderr}`
+      `Fast-forward merge failed: ${result.stderr.trim()}`
     );
   }
 
-  // 3. 获取新的 HEAD
+  // 4. 获取新的 HEAD
   const newHead = await getTrunkHead(cwd, trunkBranch);
 
   return newHead;
@@ -56,6 +78,39 @@ export async function canFastForward(
     { cwd }
   );
   return result.exitCode === 0;
+}
+
+/**
+ * ref-only 合并：仅通过 git update-ref 更新 trunk 的 ref，
+ * 不触及 working tree 或 index。
+ *
+ * 适用于主仓库有脏文件且无法清理的场景。
+ * 调用方需自行负责同步 working tree（如 git checkout / git reset）。
+ *
+ * @returns 新的主干 HEAD commit hash
+ */
+export async function refOnlyMerge(
+  branch: string,
+  trunkBranch: string,
+  cwd: string
+): Promise<string> {
+  // 1. 验证分支是 trunk 的后代（fast-forwardable）
+  const canFF = await canFastForward(branch, trunkBranch, cwd);
+  if (!canFF) {
+    throw new MergeError(
+      branch,
+      `Branch is not a descendant of ${trunkBranch}, cannot fast-forward. ` +
+        `Use mergeMode: 'full' if you need a merge commit.`
+    );
+  }
+
+  // 2. 获取分支 HEAD
+  const branchHead = await execGit(["rev-parse", branch], { cwd });
+
+  // 3. 仅更新 ref，不触碰 working tree 和 index
+  await execGit(["update-ref", `refs/heads/${trunkBranch}`, branchHead], { cwd });
+
+  return branchHead;
 }
 
 /**
