@@ -1,6 +1,6 @@
 {
   "name": "gitmesh",
-  "version": "0.1.19",
+  "version": "0.1.20",
   "description": "Git worktree orchestration for parallel AI coding agents — isolated worktrees, auto rebase-merge, and smart conflict routing. 多 Agent 并行编码的 Git 编排层。",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
