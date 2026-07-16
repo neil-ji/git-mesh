@@ -38,8 +38,11 @@ export interface GitmeshOptions {
    *
    * 在 worktree 内执行 git rebase 之前触发。
    * 适用于 Agent 修改了文件但未 commit 的场景（如 linter 自动修复）。
+   *
+   * @param agentName  触发 rebase 的 Agent 名称
+   * @param worktreePath Agent 的 worktree 路径
    */
-  onBeforeRebase?: () => void | Promise<void>;
+  onBeforeRebase?: (agentName: string, worktreePath: string) => void | Promise<void>;
   /**
    * 每次 merge 前调用，允许调用方清理 working tree。
    *

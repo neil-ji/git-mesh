@@ -31,7 +31,7 @@ export async function rebaseBranch(
   if (dirtyFiles.length > 0) {
     const fileList = dirtyFiles.map((f) => `  ${f}`).join("\n");
     throw new Error(
-      `Worktree is not clean. Cannot rebase.\nDirty files:\n${fileList}\nCommit or stash changes before rebasing.`
+      `Working tree is not clean in ${worktreePath}. Cannot rebase.\nDirty files:\n${fileList}\nCommit or stash changes before rebasing.`
     );
   }
 
@@ -53,7 +53,7 @@ export async function rebaseBranch(
 
   // rebase 失败但没有冲突文件（可能是其他错误）
   // 抛出原始错误
-  throw new Error(`Rebase failed: ${result.stderr}`);
+  throw new Error(`Rebase failed in ${worktreePath}: ${result.stderr}`);
 }
 
 /**
@@ -81,7 +81,7 @@ export async function continueRebase(
     return { success: false, files };
   }
 
-  throw new Error(`Rebase continue failed: ${result.stderr}`);
+  throw new Error(`Rebase continue failed in ${worktreePath}: ${result.stderr}`);
 }
 
 /**

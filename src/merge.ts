@@ -15,12 +15,14 @@ import { MergeError, RebaseError } from "./errors";
  * 返回脏文件列表（git status --porcelain 的每一行），干净时返回空数组。
  */
 export async function checkWorkingTreeClean(cwd: string): Promise<string[]> {
-  const output = await execGit(["status", "--porcelain"], {
-    cwd,
-    allowNonZero: true,
-  });
-  if (!output) return [];
-  return output.split("\n").filter(Boolean);
+  const result = await execGitFull(["status", "--porcelain"], { cwd });
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `git status failed in ${cwd}: ${result.stderr || "unknown error"}`
+    );
+  }
+  if (!result.stdout) return [];
+  return result.stdout.split("\n").filter(Boolean);
 }
 
 /**

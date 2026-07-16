@@ -513,7 +513,7 @@ describe("Merge Engine", () => {
     try {
       await expect(
         rebaseBranch(wt.path, "main")
-      ).rejects.toThrow(/Worktree is not clean/);
+      ).rejects.toThrow(/Working tree is not clean/);
     } finally {
       await removeWorktree("rb-dirty", wopts(), true);
     }
@@ -533,7 +533,7 @@ describe("Merge Engine", () => {
       maxRetries: 2,
       conflictTimeout: 30000,
       strategy: "rebase-first",
-      onBeforeRebase: () => {
+      onBeforeRebase: (_agentName: string, _worktreePath: string) => {
         hookCalled = true;
       },
     });

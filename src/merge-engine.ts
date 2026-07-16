@@ -48,7 +48,7 @@ export interface MergeEngineOptions {
   /** 预期 agent 数量（checkAllDone 用） */
   totalAgentCount?: number;
   /** 每次 rebase 前调用，允许调用方清理 worktree */
-  onBeforeRebase?: () => void | Promise<void>;
+  onBeforeRebase?: (agentName: string, worktreePath: string) => void | Promise<void>;
   /** 每次 merge 前调用，允许调用方清理 working tree */
   onBeforeMerge?: () => void | Promise<void>;
   /** 合并模式：'full'（默认）或 'ref-only'（仅更新 ref） */
@@ -268,14 +268,14 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
     try {
       if (signal.aborted) return;
 
-      this.emit("mesh:rebase", item.agentName);
-
       // Rebase 前回调：允许调用方清理 worktree（如 auto-commit 未提交的改动）
-      if (this.opts.onBeforeRebase) {
-        await this.opts.onBeforeRebase();
+      if (typeof this.opts.onBeforeRebase === "function") {
+        await this.opts.onBeforeRebase(item.agentName, item.worktreePath);
       }
 
       if (signal.aborted) return;
+
+      this.emit("mesh:rebase", item.agentName);
 
       const rebaseResult = await rebaseBranch(
         item.worktreePath,
@@ -408,6 +408,8 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
           // ignore
         }
 
+        if (signal.aborted) return;
+
         if (canRetry(entry.retryState)) {
           entry.state = "rebasing";
           entry.trunkHeadAtStart = this.trunkHead;
@@ -443,11 +445,17 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
         this.opts.trunkBranch
       );
 
+      if (abortController.signal.aborted) {
+        this.mergeLock.release();
+        return;
+      }
+
       if (currentTrunkHead !== entry.trunkHeadAtStart) {
         // trunk 已变化，需要重新 rebase
         this.mergeLock.release();
 
         // 检查当前是否还在 rebase 状态
+        if (abortController.signal.aborted) return;
         entry.state = "rebasing";
         entry.trunkHeadAtStart = currentTrunkHead;
 
@@ -459,6 +467,11 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
       // 合并前回调：允许调用方清理 working tree
       if (this.opts.onBeforeMerge) {
         await this.opts.onBeforeMerge();
+      }
+
+      if (abortController.signal.aborted) {
+        this.mergeLock.release();
+        return;
       }
 
       // 合并！
@@ -484,13 +497,15 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
         );
       }
 
+      if (abortController.signal.aborted) {
+        this.mergeLock.release();
+        return;
+      }
+
       // 更新全局 trunk HEAD
       this.trunkHead = newHead;
 
-      // 释放锁
-      this.mergeLock.release();
-
-      // 标记完成
+      // 标记完成（先 emit 再释放锁，避免事件处理器异常导致双重释放）
       entry.state = "merged";
       entry.result = {
         agentName: item.agentName,
@@ -500,7 +515,12 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
         cleaned: false,
       };
 
-      this.emit("mesh:merged", item.agentName, newHead);
+      try {
+        this.emit("mesh:merged", item.agentName, newHead);
+      } finally {
+        // 释放锁
+        this.mergeLock.release();
+      }
 
       // trunk 更新后，重启所有正在 rebase 的其他 agent
       await this.restartInProgressRebases();

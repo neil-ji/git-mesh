@@ -29,7 +29,7 @@ function gitmesh(options: GitmeshOptions): Promise<Session>;
 | `onFailed` | `(name: string, reason: string, worktreePath: string) => void` | 否 | — | Agent 合并失败回调 |
 | `onConflict` | `(info: ConflictInfo) => void` | 否 | — | 冲突通知回调 |
 | `onDone` | `(summary: SessionSummary) => void` | 否 | — | Session 结束回调 |
-| `onBeforeRebase` | `() => void \| Promise<void>` | 否 | — | 每次 rebase 前调用，允许调用方清理 worktree |
+| `onBeforeRebase` | `(agentName: string, worktreePath: string) => void \| Promise<void>` | 否 | — | 每次 rebase 前调用，允许调用方清理 worktree |
 | `onBeforeMerge` | `() => void \| Promise<void>` | 否 | — | 每次 merge 前调用，允许调用方清理 working tree |
 | `mergeMode` | `"full"` \| `"ref-only"` | 否 | `"full"` | 合并模式：`"full"` 执行完整 git merge；`"ref-only"` 仅更新 ref，不碰 working tree |
 
@@ -104,8 +104,11 @@ interface GitmeshOptions {
    *
    * 在 worktree 内执行 git rebase 之前触发。
    * 适用于 Agent 修改了文件但未 commit 的场景。
+   *
+   * @param agentName  触发 rebase 的 Agent 名称
+   * @param worktreePath Agent 的 worktree 路径
    */
-  onBeforeRebase?: () => void | Promise<void>;
+  onBeforeRebase?: (agentName: string, worktreePath: string) => void | Promise<void>;
   /**
    * 每次 merge 前调用，允许调用方清理 working tree。
    *

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.23] - 2026-07-17
+
+_修复 onBeforeRebase 签名 + abort 竞态条件 + silent error swallowing。_
+
+- fix: `onBeforeRebase` 签名新增 `agentName` 和 `worktreePath` 参数，修复多 agent 场景下无法识别目标 worktree 的问题
+- fix: `processMerge` / `processConflict` 中 await 点后缺少 `signal.aborted` 检查，abort() 竞态导致 entry state 永久卡在 rebasing
+- fix: `checkWorkingTreeClean` 改用 `execGitFull`，修复 git 错误被 falsy guard 静默吞掉的 bug
+- fix: `mesh:rebase` 事件调整到 `onBeforeRebase` 之后触发，监听器消费的是 hook 清理后的状态
+- fix: merge lock 释放调整为 emit 之后（try-finally），防止事件处理器异常导致双重释放
+
 ## [0.1.22] - 2026-07-16
 
 _Rebase dirty-tree 保护 — 消除 autoCommitWorktree workaround。_
