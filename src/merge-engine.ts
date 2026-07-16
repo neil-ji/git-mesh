@@ -12,8 +12,8 @@
 import { TypedEventEmitter } from "./events";
 import { AsyncLock } from "./lock";
 import { rebaseBranch, continueRebase, abortRebase, isRebasing } from "./rebase";
-import { fastForwardMerge, refOnlyMerge } from "./merge";
-import { buildConflictInfo, hasConflicts } from "./conflict";
+import { fastForwardMerge, refOnlyMerge, squashMerge } from "./merge";
+import { buildConflictInfo, hasConflicts, autoResolveConflicts } from "./conflict";
 import { getTrunkHead, removeWorktree } from "./worktree";
 import {
   createRetryState,
@@ -122,6 +122,8 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
         branch: "",
         onConflict: async () => ({ resolved: false }),
         retries: 0,
+        conflictStrategy: "route-to-agent",
+        mergeStrategy: "ff-only",
       },
       state: "failed",
       trunkHeadAtStart: "",
@@ -300,6 +302,29 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
     const { item, abortController } = entry;
     const signal = abortController.signal;
 
+    // 自动策略：跳过 agent 回调，直接用 git checkout --ours/--theirs
+    if (item.conflictStrategy !== "route-to-agent") {
+      await autoResolveConflicts(
+        item.worktreePath,
+        conflictFiles,
+        item.conflictStrategy
+      );
+
+      if (signal.aborted) return;
+
+      const continueResult = await continueRebase(item.worktreePath);
+
+      if (signal.aborted) return;
+
+      if (continueResult.success) {
+        await this.processMerge(entry);
+      } else {
+        // 自动解决后又遇到新冲突，递归处理（保持同样策略）
+        await this.processConflict(entry, continueResult.files);
+      }
+      return;
+    }
+
     if (!canRetry(entry.retryState)) {
       await this.handleFailure(
         entry,
@@ -428,13 +453,27 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
       }
 
       // 合并！
-      const mergeFn =
-        this.opts.mergeMode === "ref-only" ? refOnlyMerge : fastForwardMerge;
-      const newHead = await mergeFn(
-        item.branch,
-        this.opts.trunkBranch,
-        this.opts.cwd
-      );
+      let newHead: string;
+      if (this.opts.mergeMode === "ref-only") {
+        newHead = await refOnlyMerge(
+          item.branch,
+          this.opts.trunkBranch,
+          this.opts.cwd
+        );
+      } else if (item.mergeStrategy === "squash") {
+        newHead = await squashMerge(
+          item.branch,
+          this.opts.trunkBranch,
+          this.opts.cwd,
+          item.squashMessage!
+        );
+      } else {
+        newHead = await fastForwardMerge(
+          item.branch,
+          this.opts.trunkBranch,
+          this.opts.cwd
+        );
+      }
 
       // 更新全局 trunk HEAD
       this.trunkHead = newHead;

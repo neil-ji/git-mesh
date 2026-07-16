@@ -37,9 +37,20 @@ export function resolveOptions(
         `Agent "${agent.name}" must have an onReady callback`
       );
     }
-    if (typeof agent.onConflict !== "function" && typeof agent.resolveConflict !== "function") {
+    // 当 conflictStrategy 为 "route-to-agent"（默认）时，需要冲突处理器
+    const cs = agent.conflictStrategy ?? "route-to-agent";
+    if (cs === "route-to-agent") {
+      if (typeof agent.onConflict !== "function" && typeof agent.resolveConflict !== "function") {
+        throw new SessionError(
+          `Agent "${agent.name}" must have an onConflict or resolveConflict callback when conflictStrategy is "route-to-agent"`
+        );
+      }
+    }
+    // squash merge 需要 commit message
+    const ms = agent.mergeStrategy ?? "ff-only";
+    if (ms === "squash" && !agent.squashMessage) {
       throw new SessionError(
-        `Agent "${agent.name}" must have an onConflict or resolveConflict callback`
+        `Agent "${agent.name}" has mergeStrategy "squash" but squashMessage is required`
       );
     }
   }

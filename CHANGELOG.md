@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.21] - 2026-07-16
+
+_Merge 策略可插拔 — squash merge + conflict strategy。_
+
+- feat: `AgentDefinition` 新增 `conflictStrategy` — `"route-to-agent"`（默认）/ `"accept-agent"` / `"accept-trunk"`，非 route 模式直接 git checkout --ours/--theirs 解决，跳过 agent 回调
+- feat: `AgentDefinition` 新增 `mergeStrategy` — `"ff-only"`（默认）/ `"squash"`，squash 将所有 agent commits 压缩为一条
+- feat: `AgentDefinition` 新增 `squashMessage` — mergeStrategy 为 "squash" 时必填
+- feat: 新增 `autoResolveConflicts()` 公开函数 — 处理 rebase 上下文中的 git ours/theirs 语义反转
+- feat: 新增 `squashMerge()` 公开函数 — squash merge 的底层实现
+- feat: 校验：squash 无 message 时抛 SessionError；conflictStrategy 非 route 时 onConflict/resolveConflict 可选
+- test: 新增 5 个测试（squashMerge、conflictStrategy accept-trunk/accept-agent、端到端）
+- docs: API 参考更新 AgentDefinition 新字段和导出清单
+
 ## [0.1.20] - 2026-07-16
 
 _脏工作树处理 — 三层方案解决 merge 时主仓库脏文件导致的合并失败。_

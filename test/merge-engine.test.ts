@@ -14,8 +14,10 @@ import {
   checkWorkingTreeClean,
   fastForwardMerge,
   refOnlyMerge,
+  squashMerge,
 } from "../src/merge";
-import type { ResolutionResult, ConflictInfo } from "../src/types";
+import { autoResolveConflicts } from "../src/conflict";
+import type { ResolutionResult, ConflictInfo, ConflictFile } from "../src/types";
 
 let repo: TempRepo;
 
@@ -68,6 +70,8 @@ describe("Merge Engine", () => {
         reason: "should not conflict",
       }),
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     const results = await donePromise;
@@ -98,6 +102,8 @@ describe("Merge Engine", () => {
       branch: wt1.branch,
       onConflict: async () => ({ resolved: false, reason: "no conflict expected" }),
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     engine.enqueue({
@@ -106,6 +112,8 @@ describe("Merge Engine", () => {
       branch: wt2.branch,
       onConflict: async () => ({ resolved: false, reason: "no conflict expected" }),
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     const results = await donePromise;
@@ -185,6 +193,8 @@ describe("Merge Engine", () => {
       branch: wt.branch,
       onConflict: async () => ({ resolved: false, reason: "no" }),
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     const results = await donePromise;
@@ -218,6 +228,8 @@ describe("Merge Engine", () => {
       branch: wt.branch,
       onConflict: async () => ({ resolved: false, reason: "no" }),
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     const results = await donePromise;
@@ -306,5 +318,187 @@ describe("Merge Engine", () => {
     }
 
     await removeWorktree("refonly-me", wopts(), true);
+  });
+
+  // === Merge strategies: squash ===
+
+  it("squashMerge should squash agent commits into one", async () => {
+    const wt = await createWorktree("squash-test", "main", wopts());
+    // Make two commits — squash should compress them into one
+    await simulateAgentWork(wt.path, "s1.md", "# S1", "feat: first");
+    await simulateAgentWork(wt.path, "s2.md", "# S2", "feat: second");
+
+    const initialHead = await getTrunkHead(repo.cwd, "main");
+    const newHead = await squashMerge(
+      wt.branch, "main", repo.cwd,
+      "squash: combined commit"
+    );
+
+    expect(newHead).not.toBe(initialHead);
+
+    // Verify files are on trunk
+    expect(fs.existsSync(path.join(repo.cwd, "s1.md"))).toBe(true);
+    expect(fs.existsSync(path.join(repo.cwd, "s2.md"))).toBe(true);
+
+    // Verify it's a single commit with our message
+    const log = await execGit(["log", "-1", "--format=%s"], { cwd: repo.cwd });
+    expect(log).toBe("squash: combined commit");
+
+    await removeWorktree("squash-test", wopts(), true);
+  });
+
+  it("squashMerge should throw on dirty working tree", async () => {
+    const wt = await createWorktree("sq-dirty", "main", wopts());
+    await simulateAgentWork(wt.path, "sd.md", "# SD", "feat: sd");
+
+    const dirtyFile = path.join(repo.cwd, "temp.log");
+    fs.writeFileSync(dirtyFile, "dirty");
+
+    try {
+      await expect(
+        squashMerge(wt.branch, "main", repo.cwd, "msg")
+      ).rejects.toThrow(/Working tree is not clean/);
+    } finally {
+      fs.unlinkSync(dirtyFile);
+      await removeWorktree("sq-dirty", wopts(), true);
+    }
+  });
+
+  it("squash merge via MergeEngine should work end-to-end", async () => {
+    const wt = await createWorktree("sq-engine", "main", wopts());
+    // Two commits
+    await simulateAgentWork(wt.path, "se1.md", "# SE1", "feat: one");
+    await simulateAgentWork(wt.path, "se2.md", "# SE2", "feat: two");
+
+    const engine = new MergeEngine({
+      cwd: repo.cwd,
+      trunkBranch: "main",
+      workspaceDir,
+      branchPrefix: "mesh/",
+      maxRetries: 2,
+      conflictTimeout: 30000,
+      strategy: "rebase-first",
+    });
+
+    const donePromise = engine.start();
+    engine.enqueue({
+      agentName: "sq-engine",
+      worktreePath: wt.path,
+      branch: wt.branch,
+      onConflict: async () => ({ resolved: false, reason: "no" }),
+      retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "squash",
+      squashMessage: "squash: engine test",
+    });
+
+    const results = await donePromise;
+    expect(results[0].status).toBe("merged");
+
+    const log = await execGit(["log", "-1", "--format=%s"], { cwd: repo.cwd });
+    expect(log).toBe("squash: engine test");
+
+    await removeWorktree("sq-engine", wopts(), true);
+  });
+
+  // === Conflict strategies: accept-agent / accept-trunk ===
+
+  it("conflictStrategy accept-trunk should skip agent callback", async () => {
+    // First, advance trunk with a change to a file the agent will also touch
+    const conflictFile = "shared.md";
+    fs.writeFileSync(path.join(repo.cwd, conflictFile), "# Trunk version\n");
+    await execGit(["add", conflictFile], { cwd: repo.cwd });
+    await execGit(["commit", "-m", "trunk: add shared file"], { cwd: repo.cwd });
+
+    // Now create a worktree from BEFORE the trunk change (on the initial commit)
+    const initialCommit = await execGit(["rev-parse", "HEAD~1"], { cwd: repo.cwd });
+    const wt = await createWorktree("cs-trunk", initialCommit, {
+      ...wopts(),
+      baseRef: initialCommit,
+    });
+    // Agent modifies the same file
+    fs.writeFileSync(path.join(wt.path, conflictFile), "# Agent version\n");
+    await execGit(["add", conflictFile], { cwd: wt.path });
+    await execGit(["commit", "-m", "agent: modify shared"], { cwd: wt.path });
+
+    let agentCallbackCalled = false;
+
+    const engine = new MergeEngine({
+      cwd: repo.cwd,
+      trunkBranch: "main",
+      workspaceDir,
+      branchPrefix: "mesh/",
+      maxRetries: 2,
+      conflictTimeout: 30000,
+      strategy: "rebase-first",
+    });
+
+    const donePromise = engine.start();
+    engine.enqueue({
+      agentName: "cs-trunk",
+      worktreePath: wt.path,
+      branch: wt.branch,
+      onConflict: async () => {
+        agentCallbackCalled = true;
+        return { resolved: false };
+      },
+      retries: 0,
+      conflictStrategy: "accept-trunk",  // should skip callback
+      mergeStrategy: "ff-only",
+    });
+
+    const results = await donePromise;
+    // accept-trunk: trunk version wins
+    // Agent's conflicting change is discarded, so the file stays as trunk version
+    expect(agentCallbackCalled).toBe(false);
+
+    await removeWorktree("cs-trunk", wopts(), true);
+  });
+
+  it("conflictStrategy accept-agent should keep agent version", async () => {
+    // Advance trunk with a conflicting change
+    const conflictFile = "agent-wins.md";
+    fs.writeFileSync(path.join(repo.cwd, conflictFile), "# Trunk change\n");
+    await execGit(["add", conflictFile], { cwd: repo.cwd });
+    await execGit(["commit", "-m", "trunk: add file"], { cwd: repo.cwd });
+
+    const initialCommit = await execGit(["rev-parse", "HEAD~1"], { cwd: repo.cwd });
+    const wt = await createWorktree("cs-agent", initialCommit, {
+      ...wopts(),
+      baseRef: initialCommit,
+    });
+    fs.writeFileSync(path.join(wt.path, conflictFile), "# Agent change\n");
+    await execGit(["add", conflictFile], { cwd: wt.path });
+    await execGit(["commit", "-m", "agent: modify"], { cwd: wt.path });
+
+    const engine = new MergeEngine({
+      cwd: repo.cwd,
+      trunkBranch: "main",
+      workspaceDir,
+      branchPrefix: "mesh/",
+      maxRetries: 2,
+      conflictTimeout: 30000,
+      strategy: "rebase-first",
+    });
+
+    const donePromise = engine.start();
+    engine.enqueue({
+      agentName: "cs-agent",
+      worktreePath: wt.path,
+      branch: wt.branch,
+      onConflict: async () => ({ resolved: false }),
+      retries: 0,
+      conflictStrategy: "accept-agent",  // agent version wins
+      mergeStrategy: "ff-only",
+    });
+
+    const results = await donePromise;
+    expect(results[0].status).toBe("merged");
+
+    // Accept-agent: agent's version should be on trunk
+    const content = fs.readFileSync(path.join(repo.cwd, conflictFile), "utf-8");
+    expect(content).toContain("Agent change");
+
+    await removeWorktree("cs-agent", wopts(), true);
   });
 });

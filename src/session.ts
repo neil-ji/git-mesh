@@ -240,6 +240,9 @@ export class SessionImpl
           branch: worktreeInfo.branch,
           onConflict: this.resolveEffectiveConflictHandler(agent),
           retries: 0,
+          conflictStrategy: agent.conflictStrategy ?? "route-to-agent",
+          mergeStrategy: agent.mergeStrategy ?? "ff-only",
+          squashMessage: agent.squashMessage,
         };
         this.agentQueueItems.set(agentName, queueItem);
 

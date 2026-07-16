@@ -67,6 +67,8 @@ describe("Merge Engine — Conflict & Retry", () => {
         reason: "too complex, giving up",
       }),
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     const results = await donePromise;
@@ -115,6 +117,8 @@ describe("Merge Engine — Conflict & Retry", () => {
         return { resolved: true };
       },
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     const results = await donePromise;
@@ -161,6 +165,8 @@ describe("Merge Engine — Conflict & Retry", () => {
         throw new Error("agent crashed during conflict resolution");
       },
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     const results = await donePromise;
@@ -192,6 +198,8 @@ describe("Merge Engine — Conflict & Retry", () => {
       branch: wtGood.branch,
       onConflict: async () => ({ resolved: false }),
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     engine.enqueue({
@@ -203,6 +211,8 @@ describe("Merge Engine — Conflict & Retry", () => {
         reason: "giving up",
       }),
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     const results = await donePromise;
@@ -257,6 +267,8 @@ describe("Merge Engine — Conflict & Retry", () => {
         return { resolved: true };
       },
       retries: 0,
+      conflictStrategy: "route-to-agent",
+      mergeStrategy: "ff-only",
     });
 
     await donePromise;

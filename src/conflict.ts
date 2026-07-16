@@ -261,6 +261,39 @@ export function buildConflictInfo(params: {
 }
 
 /**
+ * 自动解决冲突：用 git checkout --ours/--theirs 选择版本。
+ *
+ * **rebase 上下文中的语义反转**：
+ * - `git --ours`  = rebase onto 的目标分支（trunk）
+ * - `git --theirs` = 被 rebase 的分支（agent）
+ *
+ * 所以：
+ * - `accept-agent` → `--theirs`（保留 agent 版本）
+ * - `accept-trunk` → `--ours`（保留 trunk 版本）
+ *
+ * 解决后自动 git add，调用方负责 continueRebase。
+ */
+export async function autoResolveConflicts(
+  worktreePath: string,
+  files: ConflictFile[],
+  strategy: "accept-agent" | "accept-trunk"
+): Promise<void> {
+  // rebase 中 git 语义反转：accept-agent → theirs, accept-trunk → ours
+  const flag = strategy === "accept-agent" ? "--theirs" : "--ours";
+
+  for (const f of files) {
+    await execGit(["checkout", flag, "--", f.path], {
+      cwd: worktreePath,
+      allowNonZero: true,
+    });
+    await execGit(["add", "--", f.path], {
+      cwd: worktreePath,
+      allowNonZero: true,
+    });
+  }
+}
+
+/**
  * 检查是否存在冲突
  */
 export function hasConflicts(files: ConflictFile[]): boolean {

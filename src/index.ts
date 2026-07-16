@@ -28,11 +28,19 @@ export type {
   WorktreeInfo,
   WorktreeStatus,
   MergeStrategyName,
+  ConflictStrategy,
+  MergeStrategyType,
 } from "./types";
 
 // 导出工具函数
-export { buildConflictPrompt } from "./conflict";
-export { checkWorkingTreeClean, refOnlyMerge, fastForwardMerge, canFastForward } from "./merge";
+export { buildConflictPrompt, autoResolveConflicts } from "./conflict";
+export {
+  checkWorkingTreeClean,
+  refOnlyMerge,
+  fastForwardMerge,
+  canFastForward,
+  squashMerge,
+} from "./merge";
 
 // 导出错误类
 export {

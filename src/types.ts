@@ -2,6 +2,12 @@
 
 export type MergeStrategyName = "rebase-first" | "sequential";
 
+/** 冲突策略 */
+export type ConflictStrategy = "route-to-agent" | "accept-agent" | "accept-trunk";
+
+/** 合并策略类型 */
+export type MergeStrategyType = "ff-only" | "squash";
+
 export interface GitmeshOptions {
   /** 仓库根目录，默认 process.cwd() */
   cwd?: string;
@@ -141,6 +147,28 @@ export interface AgentDefinition {
    * ```
    */
   runPrompt?: (prompt: string) => Promise<RunPromptResult>;
+  /**
+   * 冲突策略。默认 "route-to-agent"。
+   *
+   * - `"route-to-agent"`：冲突时路由回 agent 回调解决（默认）
+   * - `"accept-agent"`：冲突时保留 agent 版本，跳过回调，直接 `git checkout --theirs`
+   *   （rebase 中 git 语义反转：--theirs = 被 rebase 的分支 = agent）
+   * - `"accept-trunk"`：冲突时保留主干版本，跳过回调，直接 `git checkout --ours`
+   *
+   * 注意：此策略仅影响冲突文件的处理方式。非冲突文件始终被正常合并。
+   */
+  conflictStrategy?: ConflictStrategy;
+  /**
+   * 合并策略。默认 "ff-only"。
+   *
+   * - `"ff-only"`：fast-forward merge，保留 agent 的所有 commits
+   * - `"squash"`：将所有 agent commits 压缩为一条 commit
+   */
+  mergeStrategy?: MergeStrategyType;
+  /**
+   * squash merge 的 commit message。mergeStrategy 为 "squash" 时必填。
+   */
+  squashMessage?: string;
 }
 
 export interface AgentWorkDoneSignal {
@@ -274,4 +302,10 @@ export interface QueueItem {
   branch: string;
   onConflict: AgentResolveConflict;
   retries: number;
+  /** 冲突策略，默认 "route-to-agent" */
+  conflictStrategy: ConflictStrategy;
+  /** 合并策略，默认 "ff-only" */
+  mergeStrategy: MergeStrategyType;
+  /** squash merge 的 commit message */
+  squashMessage?: string;
 }

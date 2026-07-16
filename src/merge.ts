@@ -114,6 +114,52 @@ export async function refOnlyMerge(
 }
 
 /**
+ * squash 合并 Agent 分支到主干。
+ *
+ * 将所有 agent commits 压缩为一条 commit，保持主干历史干净。
+ *
+ * @param branch      Agent 分支名
+ * @param trunkBranch 主干分支名
+ * @param cwd         仓库根目录
+ * @param message     squash commit 的 message
+ * @returns 新的主干 HEAD commit hash
+ */
+export async function squashMerge(
+  branch: string,
+  trunkBranch: string,
+  cwd: string,
+  message: string
+): Promise<string> {
+  // 1. 检查 working tree 干净
+  const dirtyFiles = await checkWorkingTreeClean(cwd);
+  if (dirtyFiles.length > 0) {
+    const fileList = dirtyFiles.map((f) => `  ${f}`).join("\n");
+    throw new MergeError(
+      branch,
+      `Working tree is not clean. Cannot squash merge.\nDirty files:\n${fileList}\nCommit or stash changes before merging.`
+    );
+  }
+
+  // 2. 切换到主干
+  await execGit(["checkout", trunkBranch], { cwd });
+
+  // 3. squash merge — 把所有改动放到工作区但不 commit
+  const result = await execGitFull(["merge", "--squash", branch], { cwd });
+  if (result.exitCode !== 0) {
+    throw new MergeError(
+      branch,
+      `Squash merge failed: ${result.stderr.trim()}`
+    );
+  }
+
+  // 4. commit
+  await execGit(["commit", "-m", message], { cwd });
+
+  // 5. 获取新的 HEAD
+  return getTrunkHead(cwd, trunkBranch);
+}
+
+/**
  * 删除已合并的分支
  */
 export async function deleteMergedBranch(

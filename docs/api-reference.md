@@ -136,6 +136,23 @@ interface AgentDefinition {
   runPrompt?: (prompt: string) => Promise<RunPromptResult>;
   /** resolveConflict 模式下的 prompt 自定义选项 */
   conflictPromptOptions?: ConflictPromptOptions;
+  /**
+   * 冲突策略。默认 "route-to-agent"。
+   *
+   * - `"route-to-agent"`：冲突时路由回 agent 回调解决（默认）
+   * - `"accept-agent"`：冲突时保留 agent 版本，跳过回调
+   * - `"accept-trunk"`：冲突时保留主干版本，跳过回调
+   */
+  conflictStrategy?: "route-to-agent" | "accept-agent" | "accept-trunk";
+  /**
+   * 合并策略。默认 "ff-only"。
+   *
+   * - `"ff-only"`：fast-forward merge，保留 agent 的所有 commits
+   * - `"squash"`：将所有 agent commits 压缩为一条 commit
+   */
+  mergeStrategy?: "ff-only" | "squash";
+  /** squash merge 的 commit message。mergeStrategy 为 "squash" 时必填 */
+  squashMessage?: string;
 }
 ```
 
@@ -148,6 +165,9 @@ interface AgentDefinition {
 | `resolveConflict` | 回调 | 否 | 自动冲突解决（内建循环），仅在未设置 `onConflict` 时生效 |
 | `runPrompt` | 回调 | 否 | 设置后被透传到 `resolveConflict` 的 params 中，可复用 agent session |
 | `conflictPromptOptions` | 对象 | 否 | `resolveConflict` 模式下的 prompt 自定义选项 |
+| `conflictStrategy` | `"route-to-agent"` \| `"accept-agent"` \| `"accept-trunk"` | 否 | 冲突策略。默认路由回 agent；可设为直接选择版本，跳过回调 |
+| `mergeStrategy` | `"ff-only"` \| `"squash"` | 否 | 合并策略。默认 fast-forward；squash 将 commits 压缩为一条 |
+| `squashMessage` | `string` | 条件必填 | `mergeStrategy` 为 `"squash"` 时的 commit message |
 
 ---
 
@@ -446,10 +466,12 @@ export { gitmesh, default } from "gitmesh";
 // 工具函数
 export {
   buildConflictPrompt,
+  autoResolveConflicts,
   checkWorkingTreeClean,
   fastForwardMerge,
   refOnlyMerge,
   canFastForward,
+  squashMerge,
 } from "gitmesh";
 
 // 类型
@@ -471,6 +493,8 @@ export type {
   WorktreeInfo,
   WorktreeStatus,
   MergeStrategyName,
+  ConflictStrategy,
+  MergeStrategyType,
 } from "gitmesh";
 
 // 错误类
