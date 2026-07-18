@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24] - 2026-07-18
+
+_修复 onBeforeRebase 重复调用导致调用方状态被覆盖的 bug。_
+
+- fix: `onBeforeRebase` 现仅在首次 rebase 尝试时调用一次，后续重试跳过
+- 原因: `processRebase` 可被多次触发（trunk 变更、冲突解决错误重启），重复调用导致调用方用覆盖赋值追踪的状态（如 `committedBeforeRebase`）从 true 被错误重置为 false
+
 ## [0.1.23] - 2026-07-17
 
 _修复 onBeforeRebase 签名 + abort 竞态条件 + silent error swallowing。_
