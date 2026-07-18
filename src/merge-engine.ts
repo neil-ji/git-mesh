@@ -73,6 +73,8 @@ interface AgentEntry {
   retryState: ReturnType<typeof createRetryState>;
   result?: AgentResult;
   abortController: AbortController;
+  /** 标记 onBeforeRebase 是否已调用过，防止重复 auto-commit 覆盖状态 */
+  onBeforeRebaseCalled: boolean;
 }
 
 export class MergeEngine extends TypedEventEmitter<SessionEvents> {
@@ -100,6 +102,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
       trunkHeadAtStart: "",
       retryState: createRetryState(this.opts.maxRetries),
       abortController: new AbortController(),
+      onBeforeRebaseCalled: false,
     };
     this.queue.push(entry);
     this.activeCount++;
@@ -131,6 +134,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
       trunkHeadAtStart: "",
       retryState: createRetryState(0),
       abortController: new AbortController(),
+      onBeforeRebaseCalled: false,
       result: {
         agentName,
         status: "failed",
@@ -268,8 +272,11 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
     try {
       if (signal.aborted) return;
 
-      // Rebase 前回调：允许调用方清理 worktree（如 auto-commit 未提交的改动）
-      if (typeof this.opts.onBeforeRebase === "function") {
+      // Rebase 前回调：仅在首次 rebase 尝试时调用一次。
+      // 后续重试（trunk 变更、冲突解决错误重启等）时 worktree 已在前次调用中被清理，
+      // 重复调用会导致调用方的状态被错误覆盖（如 committedBeforeRebase 从 true 变为 false）。
+      if (!entry.onBeforeRebaseCalled && typeof this.opts.onBeforeRebase === "function") {
+        entry.onBeforeRebaseCalled = true;
         await this.opts.onBeforeRebase(item.agentName, item.worktreePath);
       }
 

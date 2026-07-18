@@ -519,11 +519,11 @@ describe("Merge Engine", () => {
     }
   });
 
-  it("onBeforeRebase hook should be called before rebase", async () => {
+  it("onBeforeRebase hook should be called exactly once, even if rebase is retried", async () => {
     const wt = await createWorktree("hook-rb", "main", wopts());
     await simulateAgentWork(wt.path, "hr.md", "# HR", "feat: hr");
 
-    let hookCalled = false;
+    let hookCallCount = 0;
 
     const engine = new MergeEngine({
       cwd: repo.cwd,
@@ -534,7 +534,7 @@ describe("Merge Engine", () => {
       conflictTimeout: 30000,
       strategy: "rebase-first",
       onBeforeRebase: (_agentName: string, _worktreePath: string) => {
-        hookCalled = true;
+        hookCallCount++;
       },
     });
 
@@ -551,7 +551,9 @@ describe("Merge Engine", () => {
 
     const results = await donePromise;
     expect(results[0].status).toBe("merged");
-    expect(hookCalled).toBe(true);
+    // 即使 merge engine 内部可能多次调用 processRebase（如 trunk 变更重试），
+    // onBeforeRebase 也应该恰好被调用一次，防止调用方的状态被重复覆盖。
+    expect(hookCallCount).toBe(1);
 
     await removeWorktree("hook-rb", wopts(), true);
   });
