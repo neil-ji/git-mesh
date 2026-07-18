@@ -34,10 +34,10 @@ export interface GitmeshOptions {
   /** Session 完成回调 */
   onDone?: (summary: SessionSummary) => void;
   /**
-   * 每次 rebase 前调用，允许调用方清理 worktree。
+   * 首次 rebase 前调用（仅一次），允许调用方清理 worktree。
    *
-   * 在 worktree 内执行 git rebase 之前触发。
-   * 适用于 Agent 修改了文件但未 commit 的场景（如 linter 自动修复）。
+   * 在首次 git rebase 尝试之前触发，后续重试（trunk 变更、冲突解决错误重启等）不再调用。
+   * 适用于 Agent 修改了文件但未 commit 的场景（如 auto-commit / linter 自动修复）。
    *
    * @param agentName  触发 rebase 的 Agent 名称
    * @param worktreePath Agent 的 worktree 路径
