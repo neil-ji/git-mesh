@@ -239,12 +239,24 @@ onConflict: async (conflict) => {
 
 ## 超时控制
 
-通过 `conflictTimeout` 控制冲突解决的最大时长：
+通过 `conflictTimeout` 控制冲突解决的最大时长。可在全局和 Agent 级别分别设置，Agent 级别优先：
 
 ```typescript
 const session = await gitmesh({
-  agents: [...],
-  conflictTimeout: 300_000, // 5 分钟超时
+  agents: [
+    {
+      name: "fast-fix",
+      // 简单修复 3 分钟足够
+      conflictTimeout: 180_000,
+      // ...
+    },
+    {
+      name: "heavy-refactor",
+      // 大规模重构给更多时间，不设置则走全局默认
+      // ...
+    },
+  ],
+  conflictTimeout: 300_000, // 全局默认 5 分钟
 });
 ```
 

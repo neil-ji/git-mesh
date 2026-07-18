@@ -27,6 +27,7 @@ import type {
   WorktreeInfo,
   ConflictInfo,
   ResolutionResult,
+  RunPromptResult,
 } from "./types";
 
 /**
@@ -242,6 +243,7 @@ export class SessionImpl
           onConflict: this.resolveEffectiveConflictHandler(agent),
           retries: 0,
           conflictStrategy: agent.conflictStrategy ?? "route-to-agent",
+          conflictTimeout: agent.conflictTimeout,
           mergeStrategy: agent.mergeStrategy ?? "ff-only",
           squashMessage: agent.squashMessage,
         };
@@ -286,6 +288,33 @@ export class SessionImpl
 
     // 优先级 2：resolveConflict（内建循环模式）
     if (agent.resolveConflict) {
+      // 防御性包装 runPrompt：如果调用方实现阻塞了（如 sendMessage 被拒绝后
+      // promise 永久不 resolve），5 分钟内强制返回失败，避免空等整个 conflictTimeout。
+      const RUNPROMPT_DEFENSIVE_TIMEOUT = 300_000; // 5 min
+      const wrappedRunPrompt = agent.runPrompt
+        ? (prompt: string): Promise<RunPromptResult> =>
+            new Promise<RunPromptResult>((resolve) => {
+              const timer = setTimeout(() => {
+                resolve({
+                  success: false,
+                  output: "runPrompt timed out after 5min — agent may be unresponsive",
+                });
+              }, RUNPROMPT_DEFENSIVE_TIMEOUT);
+              agent.runPrompt!(prompt)
+                .then((result) => {
+                  clearTimeout(timer);
+                  resolve(result);
+                })
+                .catch((err) => {
+                  clearTimeout(timer);
+                  resolve({
+                    success: false,
+                    output: err instanceof Error ? err.message : String(err),
+                  });
+                });
+            })
+        : undefined;
+
       return async (
         conflict: ConflictInfo
       ): Promise<ResolutionResult> => {
@@ -298,7 +327,7 @@ export class SessionImpl
             worktreePath: conflict.worktreePath,
             prompt,
             conflict,
-            runPrompt: agent.runPrompt,
+            runPrompt: wrappedRunPrompt,
           });
           return { resolved: true };
         } catch (err) {

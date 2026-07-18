@@ -130,7 +130,7 @@ await gitmesh({
   agents: [...],                // Agent 定义列表（必填）
   strategy: "rebase-first",     // 合并策略，默认 "rebase-first"
   maxRetries: 3,                // 冲突重试上限，默认 3
-  conflictTimeout: 600_000,     // 冲突解决超时 (ms)，默认 10 分钟
+  conflictTimeout: 600_000,     // 冲突解决超时 (ms)，默认 10 分钟（可按 Agent 覆盖）
   workspaceDir: "../.gitmesh-workspaces", // worktree 存储目录
   trunkBranch: "main",          // 主干分支名
   branchPrefix: "mesh/",        // Agent 分支名前缀

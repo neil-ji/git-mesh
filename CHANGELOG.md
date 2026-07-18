@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.25] - 2026-07-18
+
+_Agent 级别的 conflictTimeout 覆盖 + runPrompt 防御性超时。_
+
+- feat: `AgentDefinition` 新增 `conflictTimeout` 字段，可按 agent 粒度覆盖全局 `conflictTimeout`
+- feat: `resolveConflict` 模式下 `runPrompt` 增加 5 分钟防御性超时，防止调用方实现阻塞导致空等整个 `conflictTimeout`
+- refactor: `merge-engine` 中 `processConflict` 使用 `item.conflictTimeout ?? opts.conflictTimeout`，错误消息反映实际生效的超时值
+
 ## [0.1.24] - 2026-07-18
 
 _修复 onBeforeRebase 重复调用导致调用方状态被覆盖的 bug。_

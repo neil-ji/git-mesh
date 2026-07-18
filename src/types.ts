@@ -176,6 +176,12 @@ export interface AgentDefinition {
    */
   mergeStrategy?: MergeStrategyType;
   /**
+   * 冲突解决超时（毫秒），覆盖全局 conflictTimeout。
+   * 不同 agent 的冲突复杂度差异很大时，可在此按 agent 粒度设置。
+   * 未设置时使用全局 conflictTimeout（默认 600_000，即 10 分钟）。
+   */
+  conflictTimeout?: number;
+  /**
    * squash merge 的 commit message。mergeStrategy 为 "squash" 时必填。
    */
   squashMessage?: string;
@@ -314,6 +320,8 @@ export interface QueueItem {
   retries: number;
   /** 冲突策略，默认 "route-to-agent" */
   conflictStrategy: ConflictStrategy;
+  /** 冲突解决超时（毫秒），per-agent 覆盖值 */
+  conflictTimeout?: number;
   /** 合并策略，默认 "ff-only" */
   mergeStrategy: MergeStrategyType;
   /** squash merge 的 commit message */

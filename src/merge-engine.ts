@@ -363,12 +363,14 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
 
     this.emit("mesh:conflict", conflictInfo);
 
+    const effectiveTimeout = item.conflictTimeout ?? this.opts.conflictTimeout;
+
     try {
       const resolution = await resolveWithTimeout(
         item.agentName,
         conflictInfo,
         item.onConflict,
-        this.opts.conflictTimeout
+        effectiveTimeout
       );
 
       if (signal.aborted) return;
@@ -401,7 +403,7 @@ export class MergeEngine extends TypedEventEmitter<SessionEvents> {
       if (err instanceof AgentTimeoutError) {
         await this.handleFailure(
           entry,
-          `Conflict resolution timed out after ${this.opts.conflictTimeout}ms`
+          `Conflict resolution timed out after ${effectiveTimeout}ms`
         );
       } else if (err instanceof AgentAbandonError) {
         await this.handleFailure(entry, err.message);

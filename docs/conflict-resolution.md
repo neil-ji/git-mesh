@@ -221,16 +221,24 @@ const session = await gitmesh({
 
 ## 超时控制
 
-冲突解决不是无限等待的。通过 `conflictTimeout` 控制：
+冲突解决不是无限等待的。通过 `conflictTimeout` 控制，支持全局和 Agent 级别覆盖：
 
 ```typescript
 const session = await gitmesh({
-  agents: [...],
-  conflictTimeout: 120_000, // 2 分钟超时
+  agents: [
+    {
+      name: "fast-fix",
+      conflictTimeout: 180_000, // 此 Agent 专属 3 分钟超时
+      // ...
+    },
+  ],
+  conflictTimeout: 120_000, // 全局默认 2 分钟
 });
 ```
 
 超时后抛出 `AgentTimeoutError`，Agent 标记为失败。
+
+> **防御性超时**：`resolveConflict` 模式下，传给 `runPrompt` 的函数会自动包装 5 分钟防御性超时。如果调用方的 `runPrompt` 实现阻塞（如 `sendMessage` 被拒绝后 promise 永久不 resolve），5 分钟内会强制返回 `{ success: false }`，避免空等整个 `conflictTimeout`。
 
 ## 失败后的处理
 
